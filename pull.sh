@@ -1,53 +1,104 @@
 #!/usr/bin/env bash
 
+# pull.sh - A script to detect secrets in every repo of a GitHub organization
+
 set -euo pipefail
 trap "exit" INT
 
-function main() {
-  mkdir -p "data"
+# Constants
+readonly REPOS_RAW_FILE="data/repos-raw.json"
 
-  local repos_raw_file="data/repos-raw.json"
-  local repos_names_file="data/repos-names.json"
+#######################################
+# Run a search on a repo and output `data/secrets-{repo_name}.json`
+# Globals:
+#   SECRETS_FORCE_SEARCH
+#   SECRETS_ORG
+# Arguments:
+#   Repo name (ex. "titan-mt")
+# Returns:
+#   None
+#######################################
+pull_secrets() {
+  local repo_name="$1"
+  local secrets_raw_file="data/secrets-${repo_name}-raw.json"
+  local secrets_human_file="data/secrets-${repo_name}.json"
 
-  # Pull a list of repos from GitHub
-  echo "== Pulling repo data from GitHub"
-  curl -s "https://api.github.com/orgs/pantheon-systems/repos?access_token=${GITHUB_ACCESS_TOKEN}" >"$repos_raw_file"
-  jq -r '.[] | .name' "$repos_raw_file" | sort >"$repos_names_file"
-  echo "OK"
+  echo "== Processing ${repo_name}"
 
-  # For each repo, run a search and output `data/secrets-{repo_name}.json`
-  while read -r repo_name || [[ -n $repo_name ]]; do
-    echo "== Processing ${repo_name}"
+  if [[ -f "$secrets_raw_file" ]] && [[ "$SECRETS_FORCE_SEARCH" == true ]]; then
+    rm "$secrets_raw_file"
+  fi
 
-    local secrets_raw_file="data/secrets-${repo_name}-raw.json"
-    local secrets_human_file="data/secrets-${repo_name}.json"
+  # Search for secrets and create raw file
+  if [[ -f "$secrets_raw_file" ]]; then
+    echo "Repo already processed and saved to ${secrets_raw_file} ..."
+  else
+    echo "Searching for secrets, outputting to ${secrets_raw_file} ..."
+    truffleHog --regex --entropy=False --json "git@github.com:${SECRETS_ORG}/${repo_name}.git" >"${secrets_raw_file}.tmp" || true
+    mv "${secrets_raw_file}.tmp" "$secrets_raw_file"
+  fi
 
-    # Search for secrets
-    # Note: Change `false` to `true` to temporarily skip searched repos during development
-    if false && [[ -f "$secrets_raw_file" ]]; then
-      echo "Repo already processed, skipping search"
-    else
-      echo "Searching ${repo_name} ..."
-      truffleHog --regex --entropy=False --json "git@github.com:pantheon-systems/${repo_name}.git" >"${secrets_raw_file}.tmp" || true
-      mv "${secrets_raw_file}.tmp" "$secrets_raw_file"
-    fi
-
-    # If there weren't any secrets found, delete the data file and continue
-    if [ ! -s "$secrets_raw_file" ]; then
-      echo "No secrets found"
-      rm "$secrets_raw_file"
-      continue
-    fi
-
-    # How many secrets were found?
-    count=$(jq -c . "$secrets_raw_file" | wc -l)
-    count=${count##* }
-    echo "${count} secrets found"
-
-    # Generate a human readable data file
+  # Generate a human readable file and count the secrets
+  if [ -s "$secrets_raw_file" ]; then
     jq -r '. | del(.diff) | del(.printDiff)' "$secrets_raw_file" >"$secrets_human_file"
 
-  done <"$repos_names_file"
+    count=$(jq -c . "$secrets_raw_file" | wc -l)
+    count=${count##* }
+  else
+    # No secrets found, don't generate a human readable file
+    count=0
+  fi
+
+  echo "${count} secrets found"
+}
+
+#######################################
+# Pulls a list of repos from GitHub.
+# Globals:
+#   SECRETS_GITHUB_ACCESS_TOKEN
+#   SECRETS_ORG
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+pull_repos() {
+  echo "== Saving repo list to ${REPOS_RAW_FILE}"
+  curl -s "https://api.github.com/orgs/${SECRETS_ORG}/repos?access_token=${SECRETS_GITHUB_ACCESS_TOKEN}" >"$REPOS_RAW_FILE"
+  echo "OK"
+}
+
+#######################################
+# Pulls a list of repos from GitHub, searches for secrets in each repo, outputs to `data` directory.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+pull() {
+  mkdir -p "data"
+  find data -name "*.tmp" -exec rm {} \;
+
+  pull_repos
+
+  while read -r repo_name; do
+    pull_secrets "$repo_name"
+  done < <(jq -r '.[] | .name' "$REPOS_RAW_FILE" | sort)
+}
+
+#######################################
+# Execute script.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+main() {
+  pull
 }
 
 main

@@ -9,7 +9,9 @@ Install [truffleHog](https://github.com/dxa4481/truffleHog) and make it availabl
 ## Usage
 
 ```shell script
-export GITHUB_ACCESS_TOKEN="[your key here]"
+export SECRETS_GITHUB_ACCESS_TOKEN="[your key here]"
+export SECRETS_ORG="pantheon-systems"
+export SECRETS_FORCE_SEARCH=true
 ./pull.sh
 ```
 
