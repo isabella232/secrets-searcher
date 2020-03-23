@@ -1,43 +1,29 @@
-# search-secrets
+# searchsecrets
 
-Find committed secrets in Pantheon's public and private GitHub repos.
-
-## Prerequisites
-
-Install [truffleHog](https://github.com/dxa4481/truffleHog) and make it available in your path.
+Search for sensitive information stored in Pantheon git repositories.
 
 ## Usage
 
+Clone:
+
 ```shell script
-export SECRETS_GITHUB_ACCESS_TOKEN="[your key here]"
-export SECRETS_ORG="pantheon-systems"
-export SECRETS_FORCE_SEARCH=true
-./pull.sh
+cd ~/go/src/github.com/pantheon-systems
+git clone git@github.com:pantheon-systems/search-secrets.git
+cd search-secrets
+go build .
 ```
 
-The output should look like this:
+Run from within the source directory (for now):
 
-```
-== Pulling repo data from GitHub
-OK
-== Processing apm
-Searching apm ...
-No secrets found
-== Processing certificate-authentication-for-jenkins
-Searching certificate-authentication-for-jenkins ...
-No secrets found
-== Processing createjobadvanced-plugin
-Searching createjobadvanced-plugin ...
-No secrets found
-== Processing dashboard-view-plugin
-Searching dashboard-view-plugin ...
-No secrets found
-== Processing dnscheck
-...
+```shell script
+search-secrets search \
+  --github-token=<GITHUB_TOKEN> \
+  --organization=pantheon-systems \
+  --repos=titan-mt
 ```
 
+You will find the output at `./output`.
 
 ## TODO
 
-- Ignore false positives so we can return a useful 0 or 1 code
-- Convert this to a Kubernetes CronJob that fires periodically and notifies #security-operations (INFOSEC-1165)
+- Make the install and usage less complex.
