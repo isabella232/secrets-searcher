@@ -19,18 +19,6 @@ func (eb decisionEnumBase) Value() string { return eb.value }
 // needs to be overriden by inheriting types
 func (eb decisionEnumBase) String() string { return "" }
 
-// IgnoreExampleCode is the enum type for 'valueIgnoreExampleCode' value
-type IgnoreExampleCode struct{ decisionEnumBase }
-
-// New is the constructor for a brand new DecisionEnum with value 'valueIgnoreExampleCode'
-func (IgnoreExampleCode) New() DecisionEnum { return IgnoreExampleCode{decisionEnumBase{valueIgnoreExampleCode}} }
-
-// String returns always "IgnoreExampleCode" for this enum type
-func (IgnoreExampleCode) String() string { return "IgnoreExampleCode" }
-
-// uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (IgnoreExampleCode) uniqueDecisionMethod() {}
-
 // IgnoreTemplateVars is the enum type for 'valueIgnoreTemplateVars' value
 type IgnoreTemplateVars struct{ decisionEnumBase }
 
@@ -67,17 +55,29 @@ func (DoNotKnowYet) String() string { return "DoNotKnowYet" }
 // uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (DoNotKnowYet) uniqueDecisionMethod() {}
 
-// NotImplemented is the enum type for 'valueNotImplemented' value
-type NotImplemented struct{ decisionEnumBase }
+// ParserNotImplemented is the enum type for 'valueParserNotImplemented' value
+type ParserNotImplemented struct{ decisionEnumBase }
 
-// New is the constructor for a brand new DecisionEnum with value 'valueNotImplemented'
-func (NotImplemented) New() DecisionEnum { return NotImplemented{decisionEnumBase{valueNotImplemented}} }
+// New is the constructor for a brand new DecisionEnum with value 'valueParserNotImplemented'
+func (ParserNotImplemented) New() DecisionEnum { return ParserNotImplemented{decisionEnumBase{valueParserNotImplemented}} }
 
-// String returns always "NotImplemented" for this enum type
-func (NotImplemented) String() string { return "NotImplemented" }
+// String returns always "ParserNotImplemented" for this enum type
+func (ParserNotImplemented) String() string { return "ParserNotImplemented" }
 
 // uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (NotImplemented) uniqueDecisionMethod() {}
+func (ParserNotImplemented) uniqueDecisionMethod() {}
+
+// NotImplementedWithinParser is the enum type for 'valueNotImplementedWithinParser' value
+type NotImplementedWithinParser struct{ decisionEnumBase }
+
+// New is the constructor for a brand new DecisionEnum with value 'valueNotImplementedWithinParser'
+func (NotImplementedWithinParser) New() DecisionEnum { return NotImplementedWithinParser{decisionEnumBase{valueNotImplementedWithinParser}} }
+
+// String returns always "NotImplementedWithinParser" for this enum type
+func (NotImplementedWithinParser) String() string { return "NotImplementedWithinParser" }
+
+// uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (NotImplementedWithinParser) uniqueDecisionMethod() {}
 
 // IgnoreTestFiles is the enum type for 'valueIgnoreTestFiles' value
 type IgnoreTestFiles struct{ decisionEnumBase }
@@ -91,13 +91,26 @@ func (IgnoreTestFiles) String() string { return "IgnoreTestFiles" }
 // uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (IgnoreTestFiles) uniqueDecisionMethod() {}
 
+// IgnoreExampleCode is the enum type for 'valueIgnoreExampleCode' value
+type IgnoreExampleCode struct{ decisionEnumBase }
+
+// New is the constructor for a brand new DecisionEnum with value 'valueIgnoreExampleCode'
+func (IgnoreExampleCode) New() DecisionEnum { return IgnoreExampleCode{decisionEnumBase{valueIgnoreExampleCode}} }
+
+// String returns always "IgnoreExampleCode" for this enum type
+func (IgnoreExampleCode) String() string { return "IgnoreExampleCode" }
+
+// uniqueDecisionMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (IgnoreExampleCode) uniqueDecisionMethod() {}
+
 var internalDecisionEnumValues = []DecisionEnum{
-	IgnoreExampleCode{}.New(),
 	IgnoreTemplateVars{}.New(),
 	NeedsInvestigation{}.New(),
 	DoNotKnowYet{}.New(),
-	NotImplemented{}.New(),
+	ParserNotImplemented{}.New(),
+	NotImplementedWithinParser{}.New(),
 	IgnoreTestFiles{}.New(),
+	IgnoreExampleCode{}.New(),
 }
 
 // DecisionEnumValues will return a slice of all allowed enum value types
@@ -106,18 +119,20 @@ func DecisionEnumValues() []DecisionEnum { return internalDecisionEnumValues[:] 
 // NewDecisionFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewDecisionFromValue(v string) (result DecisionEnum) {
 	switch v {
-	case valueIgnoreExampleCode:
-		result = IgnoreExampleCode{}.New()
 	case valueIgnoreTemplateVars:
 		result = IgnoreTemplateVars{}.New()
 	case valueNeedsInvestigation:
 		result = NeedsInvestigation{}.New()
 	case valueDoNotKnowYet:
 		result = DoNotKnowYet{}.New()
-	case valueNotImplemented:
-		result = NotImplemented{}.New()
+	case valueParserNotImplemented:
+		result = ParserNotImplemented{}.New()
+	case valueNotImplementedWithinParser:
+		result = NotImplementedWithinParser{}.New()
 	case valueIgnoreTestFiles:
 		result = IgnoreTestFiles{}.New()
+	case valueIgnoreExampleCode:
+		result = IgnoreExampleCode{}.New()
 	}
 	return
 }

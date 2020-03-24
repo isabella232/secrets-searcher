@@ -1,34 +1,34 @@
 package structures
 
 type Index struct {
-	Values  []string
-	Enabled bool
-	set     map[string]struct{}
+    Values  []string
+    Enabled bool
+    set     map[string]struct{}
 }
 
 func NewIndex(values []string) *Index {
-	return &Index{
-		Values:  values,
-		Enabled: len(values) > 0,
-		set:     sliceToIndex(values),
-	}
+    return &Index{
+        Values:  values,
+        Enabled: len(values) > 0,
+        set:     sliceToIndex(values),
+    }
 }
 
 func (i *Index) Include(value string) bool {
-	if ! i.Enabled {
-		return true
-	}
+    if ! i.Enabled {
+        return true
+    }
 
-	_, ok := i.set[value]
+    _, ok := i.set[value]
 
-	return ok
+    return ok
 }
 
 func sliceToIndex(values []string) map[string]struct{} {
-	result := map[string]struct{}{}
-	for _, value := range values {
-		result[value] = struct{}{}
-	}
+    result := map[string]struct{}{}
+    for _, value := range values {
+        result[value] = struct{}{}
+    }
 
-	return result
+    return result
 }

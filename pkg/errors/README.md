@@ -96,8 +96,8 @@ foo2 = "bar2"
 errors.Errorv("error string", foo)              // error string (bar)
 errors.Errorv("error string", foo, foo2)        // error string (bar, bar2)
 errors.Errorv("error string", logrus.Fields{    // error string (foo=bar, foo2=bar2)
-	"foo": foo,
-	"foo2": foo2,
+    "foo": foo,
+    "foo2": foo2,
 })
 ```
 
