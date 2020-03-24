@@ -7,10 +7,7 @@ Search for sensitive information stored in Pantheon git repositories.
 Run from within the source directory (for now):
 
 ```shell script
-search-secrets search \
-  --github-token="$GITHUB_TOKEN" \
-  --organization=pantheon-systems \
-  --repos=titan-mt
+search-secrets --github-token="$GITHUB_TOKEN" --organization=pantheon-systems --repos=titan-mt
 ```
 
 You will find the output at `./output`.
