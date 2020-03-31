@@ -3,8 +3,13 @@ package cmd
 import (
     "fmt"
     "github.com/mitchellh/go-homedir"
+    "github.com/mitchellh/mapstructure"
     "github.com/pantheon-systems/search-secrets/pkg/app"
+    "github.com/pantheon-systems/search-secrets/pkg/database/enum/processor_type"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
+    "github.com/pantheon-systems/search-secrets/pkg/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/rule/processor"
+    "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "github.com/spf13/cobra"
     "github.com/spf13/pflag"
@@ -12,6 +17,7 @@ import (
     "os"
     "path/filepath"
     "strings"
+    "time"
 )
 
 const (
@@ -19,6 +25,8 @@ const (
     configFileName     = "." + appName
     configFileExt      = "yaml"
     configFileBasename = configFileName + "." + configFileExt
+
+    dateFormat = "2006-01-02"
 )
 
 var (
@@ -27,10 +35,41 @@ var (
         Short: "Search for sensitive information stored in Pantheon git repositories.",
         Run:   run,
     }
-    logLevelValue string
-    cfgFile       string
-    vpr           *viper.Viper
-    log           *logrus.Logger
+    cfg     config
+    cfgFile string
+    vpr     *viper.Viper
+    log     *logrus.Logger
+)
+
+type (
+    config struct {
+        LogLevel           string       `mapstructure:"log-level"`
+        GithubToken        string       `mapstructure:"github-token"`
+        OutputDir          string       `mapstructure:"output-dir"`
+        Organization       string       `mapstructure:"organization"`
+        Repos              []string     `mapstructure:"repos"`
+        Refs               []string     `mapstructure:"refs"`
+        EarliestDate       time.Time    `mapstructure:"earliest-date"`
+        LatestDate         time.Time    `mapstructure:"latest-date"`
+        EarliestCommit     string       `mapstructure:"earliest-commit"`
+        LatestCommit       string       `mapstructure:"latest-commit"`
+        RuleConfigs        []ruleConfig `mapstructure:"rules"`
+        WhitelistPathMatch []string     `mapstructure:"whitelist-path-match"`
+        WhitelistSecretIDs []string     `mapstructure:"whitelist-secret-id"`
+    }
+    ruleConfig struct {
+        Name               string        `mapstructure:"name"`
+        Processor          string        `mapstructure:"processor"`
+        RegexString        string        `mapstructure:"regex"`
+        PEMType            string        `mapstructure:"pem-type"`
+        EntropyConfig      entropyConfig `mapstructure:"entropy"`
+        WhitelistCodeMatch []string      `mapstructure:"whitelist-code-match"`
+    }
+    entropyConfig struct {
+        Charset          string  `mapstructure:"charset"`
+        LengthThreshold  int     `mapstructure:"length-threshold"`
+        EntropyThreshold float64 `mapstructure:"entropy-threshold"`
+    }
 )
 
 func init() {
@@ -46,33 +85,6 @@ func Execute() {
     }
 }
 
-func run(*cobra.Command, []string) {
-    githubToken := vpr.GetString("github-token")
-    outputDir := vpr.GetString("output-dir")
-    organization := vpr.GetString("organization")
-    truffleHogCmd := vpr.GetStringSlice("trufflehog-cmd")
-    reposFilter := vpr.GetStringSlice("repos")
-    reasonsFilter := vpr.GetStringSlice("reasons")
-    skipEntropy := vpr.GetBool("skip-entropy")
-
-    // Validate
-    if organization == "" {
-        errors.Fatal(log, errors.New("organization is required"))
-    }
-    if githubToken == "" {
-        errors.Fatal(log, errors.New("github-token is required"))
-    }
-
-    search, err := app.NewSearch(githubToken, organization, outputDir, truffleHogCmd, reposFilter, reasonsFilter, skipEntropy, log)
-    if err != nil {
-        log.Fatal(errors.WithMessage(err, "unable to create search app"))
-    }
-
-    if err := search.Execute(); err != nil {
-        log.Fatal(errors.WithMessage(err, "unable to execute search app"))
-    }
-}
-
 func initArgs() {
     flags := rootCmd.PersistentFlags()
 
@@ -83,10 +95,8 @@ func initArgs() {
         fmt.Sprintf("config file (default is $HOME/.%s.%s)", appName, configFileExt),
     )
 
-    flags.StringVarP(
-        &logLevelValue,
+    flags.String(
         "log-level",
-        "l",
         logrus.DebugLevel.String(),
         fmt.Sprintf("How detailed should the log be? Valid values: %s.", strings.Join(validLogLevels(), ", ")),
     )
@@ -110,27 +120,45 @@ func initArgs() {
     )
 
     flags.StringSlice(
-        "trufflehog-cmd",
-        []string{"./thog.sh"},
-        "TruffleHog command.",
-    )
-
-    flags.StringSlice(
         "repos",
         []string{},
         "Only search these repos.",
     )
 
     flags.StringSlice(
-        "reasons",
+        "branches",
         []string{},
-        "Only search these reasons.",
+        "Only search these references (branch names or full references like \"refs/tags/tag1\").",
     )
 
-    flags.Bool(
-        "skip-entropy",
-        false,
-        "Use every reason except for \"entropy\". If \"reasons\" is passed, this argument is ignored.",
+    flags.String(
+        "earliest-date",
+        time.Time{}.Format(dateFormat),
+        "Only search commits on or after this date.",
+    )
+
+    flags.String(
+        "latest-date",
+        time.Now().Format(dateFormat),
+        "Only search commits on or before this date.",
+    )
+
+    flags.String(
+        "earliest-commit",
+        "",
+        "Only search this and commits after this commit. Only makes sense when searching a single repo.",
+    )
+
+    flags.String(
+        "latest-commit",
+        "",
+        "Only search this and commits before this commit. Only makes sense when searching a single repo",
+    )
+
+    flags.StringSlice(
+        "whitelist-path-match",
+        []string{},
+        "Whitelist files with paths that match these patterns.",
     )
 }
 
@@ -173,23 +201,84 @@ func initConfig() {
         errors.Fatal(log, errors.Wrap(err, "unable to read config file"))
     }
 
-    // Debug print
-    for _, f := range flags {
-        log.WithField("key", f.Name).WithField("value", vpr.Get(f.Name)).Info("config flag")
+    opts := viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+        mapstructure.StringToTimeHookFunc(dateFormat),
+        mapstructure.StringToSliceHookFunc(","),
+    ))
+    if err := vpr.Unmarshal(&cfg, opts); err != nil {
+        errors.Fatal(log, errors.Wrap(err, "unable to unmarshal config"))
     }
 }
 
 func configureLogging() {
     // Log level
-    logLevel, err := logrus.ParseLevel(logLevelValue)
+    logLevel, err := logrus.ParseLevel(cfg.LogLevel)
     if err != nil {
-        errors.Fatal(log, errors.Wrapv(err, "invalid value for log-level: ", logLevelValue))
+        errors.Fatal(log, errors.Wrapv(err, "invalid value for log-level: ", cfg.LogLevel))
     }
     log.SetLevel(logLevel)
 
     // Formatter
     var fm logrus.Formatter = &logrus.TextFormatter{}
     log.SetFormatter(fm)
+}
+
+func run(*cobra.Command, []string) {
+    if cfg.Organization == "" {
+        errors.Fatal(log, errors.New("organization is required"))
+    }
+    if cfg.GithubToken == "" {
+        errors.Fatal(log, errors.New("github-token is required"))
+    }
+
+    var rules, err = buildRules(cfg.RuleConfigs)
+    var earliestTime = cfg.EarliestDate
+    var latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
+
+    var whitelistPath structures.RegexpSet
+    whitelistPath, err = structures.NewRegexpSetFromStrings(cfg.WhitelistPathMatch)
+    if err != nil {
+        return
+    }
+
+    whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
+
+    search, err := app.NewSearch(cfg.GithubToken, cfg.Organization, cfg.OutputDir, cfg.Repos, cfg.Refs, rules, earliestTime, latestTime, cfg.EarliestCommit, cfg.LatestCommit, whitelistPath, whitelistSecretIDSet, log)
+    if err != nil {
+        log.Fatal(errors.WithMessage(err, "unable to create search app"))
+    }
+
+    if err := search.Execute(); err != nil {
+        log.Fatal(errors.WithMessage(err, "unable to execute search app"))
+    }
+}
+
+func buildRules(ruleConfigs []ruleConfig) (result []*rule.Rule, err error) {
+    for _, ruleConf := range ruleConfigs {
+        var proc rule.Processor
+        proc, err = buildProcessor(ruleConf)
+        if err != nil {
+            return
+        }
+
+        result = append(result, rule.New(ruleConf.Name, proc))
+    }
+    return
+}
+
+func buildProcessor(ruleConf ruleConfig) (result rule.Processor, err error) {
+    switch ruleConf.Processor {
+    case processor_type.Regex{}.New().Value():
+        result, err = processor.NewRegexProcessor(ruleConf.RegexString, ruleConf.WhitelistCodeMatch)
+    case processor_type.PEM{}.New().Value():
+        result = processor.NewPEMProcessor(ruleConf.PEMType, log)
+    case processor_type.Entropy{}.New().Value():
+        ec := ruleConf.EntropyConfig
+        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold)
+    default:
+        err = errors.Errorv("unknown search type", ruleConf.Processor)
+    }
+    return
 }
 
 func validLogLevels() []string {

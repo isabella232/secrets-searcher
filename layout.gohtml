@@ -1,0 +1,44 @@
+{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}
+{{define "link"}}<a href="{{.URL}}">{{.Label}}</a>{{end}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Title</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+</head>
+<body>
+<div class="container-fluid">
+    {{range .Secrets}}
+        <div class="secret" style="margin-bottom: 50px">
+            <h2>Secret {{.ID}}</h2>
+
+            <pre><code>{{.Value}}</code></pre>
+
+            <table class="table">
+                <tr>
+                    <th scope="col">Rule</th>
+                    <th scope="col">Repo</th>
+                    <th scope="col">Commit</th>
+                    <th scope="col">Line</th>
+                    <th scope="col">Code</th>
+                </tr>
+                {{range .Findings}}
+                    <tr>
+                        <td>{{.RuleName}}</td>
+                        <td>{{template "link" .RepoFullLink}}</td>
+                        <td>{{template "link" .CommitHashLink}} ({{.CommitDate.Format "01/02/2006"}})</td>
+                        <td>{{template "link" .FileLineLink}}</td>
+                        <td>
+                            <pre><code>{{.Code}}</code></pre>
+                        </td>
+                    </tr>
+                {{end}}
+            </table>
+        </div>
+    {{end}}
+</div>
+</body>
+</html>

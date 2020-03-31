@@ -1,50 +1,47 @@
 package code
 
 import (
-    "github.com/pantheon-systems/search-secrets/pkg/code/github"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    filterpkg "github.com/pantheon-systems/search-secrets/pkg/filter"
+    "github.com/pantheon-systems/search-secrets/pkg/github"
+    "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "gopkg.in/src-d/go-git.v4"
     "os"
     "path/filepath"
-    "strconv"
 )
 
 type Code struct {
     githubAPI    *github.API
     organization string
     codeDir      string
-    filter       *filterpkg.Filter
+    repoFilter   *structures.Filter
     db           *database.Database
     log          *logrus.Logger
 }
 
-func New(githubToken, organization, codeDir string, filter *filterpkg.Filter, db *database.Database, log *logrus.Logger) (*Code, error) {
-    githubAPI := github.New(githubToken)
-
+func New(githubAPI *github.API, organization, codeDir string, repoFilter *structures.Filter, db *database.Database, log *logrus.Logger) *Code {
     return &Code{
         githubAPI:    githubAPI,
         organization: organization,
         codeDir:      codeDir,
-        filter:       filter,
+        repoFilter:   repoFilter,
         db:           db,
         log:          log,
-    }, nil
+    }
 }
 
 func (c *Code) PrepareRepos() (err error) {
     err = c.pullRepoData()
     if err != nil {
-        return err
+        return
     }
 
     return c.cloneRepos()
 }
 
-func (c *Code) CloneDir(repo *database.Repo) string {
-    return filepath.Join(c.codeDir, repo.Name)
+func (c *Code) CloneDir(repoName string) string {
+    return filepath.Join(c.codeDir, repoName)
 }
 
 func (c *Code) pullRepoData() (err error) {
@@ -59,14 +56,21 @@ func (c *Code) pullRepoData() (err error) {
     }
 
     for _, ghRepo := range ghRepos {
-        id := database.CreateHashID(strconv.FormatInt(*ghRepo.ID, 10))
-        repo := &database.Repo{
-            ID:     id,
-            Name:   *ghRepo.Name,
-            SSHURL: *ghRepo.SSHURL,
+        if ! c.repoFilter.IsIncluded(ghRepo.GetName()) {
+            continue
         }
-
-        err = c.db.Write(database.RepoTable, id, repo)
+        // TODO This should be in config
+        if ghRepo.GetFork() {
+            continue
+        }
+        err = c.db.WriteRepo(&database.Repo{
+            ID:       database.CreateHashID(ghRepo.GetFullName()),
+            Name:     ghRepo.GetName(),
+            Owner:    ghRepo.Owner.GetLogin(),
+            FullName: ghRepo.GetFullName(),
+            SSHURL:   ghRepo.GetSSHURL(),
+            HTMLURL:  ghRepo.GetHTMLURL(),
+        })
         if err != nil {
             return
         }
@@ -76,18 +80,15 @@ func (c *Code) pullRepoData() (err error) {
 }
 
 func (c *Code) cloneRepos() (err error) {
-    repos, err := c.db.GetRepos()
+    repos, err := c.db.GetReposFiltered(c.repoFilter)
     if err != nil {
-        return err
+        return
     }
 
     for _, repo := range repos {
-        if ! c.filter.Repos.Include(repo.Name) {
-            continue
-        }
         err = c.cloneRepo(repo)
         if err != nil {
-            return err
+            return
         }
     }
 
@@ -95,11 +96,11 @@ func (c *Code) cloneRepos() (err error) {
 }
 
 func (c *Code) cloneRepo(repo *database.Repo) (err error) {
-    cloneDir := c.CloneDir(repo)
+    cloneDir := c.CloneDir(repo.Name)
 
     // Check if the code dir exists for repo
     if _, err = os.Stat(cloneDir); err == nil {
-        c.log.Warn("repo clone already exists, skipping clone")
+        c.log.WithField("repo", repo.Name).Warn("repo clone already exists, skipping clone")
         return
     }
 

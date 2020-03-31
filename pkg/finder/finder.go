@@ -1,189 +1,252 @@
 package finder
 
 import (
-    "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/code"
     "github.com/pantheon-systems/search-secrets/pkg/database"
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/reason"
-    "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/filter"
-    diffpkg "github.com/pantheon-systems/search-secrets/pkg/secret/diff"
+    decisionenum "github.com/pantheon-systems/search-secrets/pkg/database/enum/decision"
+    "github.com/pantheon-systems/search-secrets/pkg/rule"
+    "sync"
+
+    "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "strings"
+    "time"
 )
-
-var regexps = map[reason.ReasonEnum]string{
-    reason.SlackToken{}.New():           "(xox[p|b|o|a]-[0-9]{12}-[0-9]{12}-[0-9]{12}-[a-z0-9]{32})",
-    reason.RSAPrivateKey{}.New():        "-----BEGIN RSA PRIVATE KEY-----",
-    reason.SSHPrivateKeyOpenSSH{}.New(): "-----BEGIN OPENSSH PRIVATE KEY-----",
-    reason.SSHPrivateKeyDSA{}.New():     "-----BEGIN DSA PRIVATE KEY-----",
-    reason.SSHPrivateKeyEC{}.New():      "-----BEGIN EC PRIVATE KEY-----",
-    reason.PGPPrivateKeyBlock{}.New():   "-----BEGIN PGP PRIVATE KEY BLOCK-----",
-    reason.FacebookOauth{}.New():        "[f|F][a|A][c|C][e|E][b|B][o|O][o|O][k|K].*['|\"][0-9a-f]{32}['|\"]",
-    reason.TwitterOauth{}.New():         "[t|T][w|W][i|I][t|T][t|T][e|E][r|R].*['|\"][0-9a-zA-Z]{35,44}['|\"]",
-    reason.GitHub{}.New():               "[g|G][i|I][t|T][h|H][u|U][b|B].*['|\"][0-9a-zA-Z]{35,40}['|\"]",
-    reason.GoogleOauth{}.New():          "(\"client_secret\":\"[a-zA-Z0-9-_]{24}\")",
-    reason.AWSAPIKey{}.New():            "AKIA[0-9A-Z]{16}",
-    reason.HerokuAPIKey{}.New():         "[h|H][e|E][r|R][o|O][k|K][u|U].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}",
-    reason.GenericSecret{}.New():        "[s|S][e|E][c|C][r|R][e|E][t|T].*['|\"][0-9a-zA-Z]{32,45}['|\"]",
-    reason.GenericAPIKey{}.New():        "[a|A][p|P][i|I][_]?[k|K][e|E][y|Y].*['|\"][0-9a-zA-Z]{32,45}['|\"]",
-    reason.SlackWebhook{}.New():         "https://hooks.slack.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}",
-    reason.GCPServiceAccount{}.New():    "\"type\": \"service_account\"",
-    reason.TwilioApiKey{}.New():         "SK[a-z0-9]{32}",
-    reason.PasswordInUrl{}.New():        "[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]",
-}
 
 type (
     Finder struct {
-        driver Driver
-        code   *code.Code
-        filter *filter.Filter
-        db     *database.Database
-        log    *logrus.Logger
+        driver               Driver
+        code                 *code.Code
+        repoFilter           *structures.Filter
+        refFilter            *structures.Filter
+        rules                []*rule.Rule
+        earliestTime         time.Time
+        latestTime           time.Time
+        earliestCommit       string
+        latestCommit         string
+        whitelistPath        structures.RegexpSet
+        whitelistSecretIDSet structures.Set
+        db                   *database.Database
+        log                  *logrus.Logger
     }
     Driver interface {
-        GetFindings(cloneDir string, useEntropy bool, reasonRegexps *ReasonRegexps, out chan *DriverFinding) error
+        Find(repoID, repoName, cloneDir string, refs []string, rules []*rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, out chan *DriverResult)
+    }
+    DriverResult struct {
+        Err    error
+        Commit *DriverCommit
+    }
+    DriverCommit struct {
+        RepoID      string
+        Commit      string
+        CommitHash  string
+        Date        time.Time
+        AuthorEmail string
+        FileChanges []*DriverFileChange
+    }
+    DriverFileChange struct {
+        Path         string
+        FileContents string
+        Diff         string
+        Findings     []*DriverFinding
     }
     DriverFinding struct {
-        Branch       string
-        Commit       string
-        CommitHash   string
-        Diff         string
-        Path         string
-        PrintDiff    string
-        Reason       string
-        StringsFound []string
+        Rule             *rule.Rule
+        FileRange        *structures.FileRange
+        SecretsProcessed bool
+        SecretValues     []string
     }
-    ReasonRegexps map[string]string
 )
 
-func New(driver Driver, code *code.Code, filter *filter.Filter, db *database.Database, log *logrus.Logger) (finder *Finder, err error) {
-    finder = &Finder{
-        driver: driver,
-        code:   code,
-        filter: filter,
-        db:     db,
-        log:    log,
+func New(driver Driver, code *code.Code, repoFilter, refFilter *structures.Filter, rules []*rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, db *database.Database, log *logrus.Logger) *Finder {
+    return &Finder{
+        driver:               driver,
+        code:                 code,
+        repoFilter:           repoFilter,
+        refFilter:            refFilter,
+        rules:                rules,
+        earliestTime:         earliestTime,
+        latestTime:           latestTime,
+        earliestCommit:       earliestCommit,
+        latestCommit:         latestCommit,
+        whitelistPath:        whitelistPath,
+        whitelistSecretIDSet: whitelistSecretIDSet,
+        db:                   db,
+        log:                  log,
     }
-
-    return
 }
 
 func (f *Finder) PrepareFindings() (err error) {
     if f.db.TableExists(database.FindingTable) {
-        f.log.Warn("finding table already exists, skipping")
+        //f.log.Warn("finding table already exists, skipping")
+        //return
+    }
+    var repos []*database.Repo
+    repos, err = f.db.GetReposFiltered(f.repoFilter)
+    if err != nil {
         return
     }
 
-    repos, err := f.db.GetRepos()
-    if err != nil {
-        return err
+    var wg sync.WaitGroup
+    out := make(chan *DriverResult)
+    defer close(out)
+
+    // Create goroutines for repo that push findings into the channel
+    for _, repo := range repos {
+        cloneDir := f.code.CloneDir(repo.Name)
+        refs := f.refFilter.Values()
+
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            f.driver.Find(repo.ID, repo.Name, cloneDir, refs, f.rules, f.earliestTime, f.latestTime, f.earliestCommit, f.latestCommit, f.whitelistPath, out)
+        }()
     }
 
-    for _, repo := range repos {
-        if ! f.filter.Repos.Include(repo.Name) {
-            continue
-        }
-        err = f.prepareFindingsForRepo(repo)
+    // Process findings from channel
+    go func() {
+        var err error
+        err = f.ProcessResult(&out)
         if err != nil {
-            return err
+            f.log.Error(err)
+            return
+        }
+    }()
+
+    wg.Wait()
+
+    return
+}
+
+func (f *Finder) ProcessResult(out *chan *DriverResult) (err error) {
+    for dr := range *out {
+        if dr.Err != nil {
+            err = dr.Err
+            return
+        }
+
+        err = f.processCommit(dr)
+        if err != nil {
+            return
         }
     }
 
     return
 }
 
-func (f *Finder) prepareFindingsForRepo(repo *database.Repo) (err error) {
-    var reasons []reason.ReasonEnum
-    if f.filter.Reasons.Enabled {
-        for _, reasonValue := range f.filter.Reasons.Values {
-            r := reason.NewReasonFromValue(reasonValue)
-            if r == nil {
-                return errors.Errorv("unknown commit reason in filter", reasonValue)
-            }
-            reasons = append(reasons, r)
-        }
-    } else {
-        reasons = reason.ReasonEnumValues()
+func (f *Finder) processCommit(dr *DriverResult) (err error) {
+    dc := dr.Commit
+
+    commit := &database.Commit{
+        ID:          dc.CommitHash,
+        RepoID:      dc.RepoID,
+        Commit:      dc.Commit,
+        CommitHash:  dc.CommitHash,
+        Date:        dc.Date,
+        AuthorEmail: dc.AuthorEmail,
+    }
+    if err = f.db.WriteCommit(commit); err != nil {
+        return
     }
 
-    // Build regexp map and entropy flag
-    reasonRegexps := ReasonRegexps{}
-    useEntropy := false
-    for _, r := range reasons {
-        // Entropy doesn't have regexp
-        entropyReason := reason.Entropy{}.New()
-        if r == entropyReason {
-            useEntropy = true
-            continue
-        }
-
-        regexp, ok := regexps[r]
-        if ! ok {
-            return errors.Errorv("unable to find regular expression for reason", r.Value())
-        }
-
-        reasonRegexps[r.Value()] = regexp
-    }
-
-    cloneDir := f.code.CloneDir(repo)
-
-    out := make(chan *DriverFinding)
-    errs := make(chan error, 1)
-    go func() {
-        defer close(out)
-        defer close(errs)
-        err := f.driver.GetFindings(cloneDir, useEntropy, &reasonRegexps, out)
-        if err != nil {
-            errs <- err
-        }
-    }()
-
-    for driverFinding := range out {
-        r := reason.NewReasonFromValue(driverFinding.Reason)
-        if r == nil {
-            return errors.Errorv("unknown commit reason from driver", r)
-        }
-
-        finding := &database.Finding{
-            ID:          database.CreateHashID(fmt.Sprintf("%+v\n", driverFinding)),
-            RepoID:      repo.ID,
-            Branch:      driverFinding.Branch,
-            Commit:      driverFinding.Commit,
-            CommitHash:  driverFinding.CommitHash,
-            Diff:        driverFinding.Diff,
-            Path:        driverFinding.Path,
-            PrintDiff:   driverFinding.PrintDiff,
-            ReasonValue: r.Value(),
-            Reason:      r,
-        }
-        if err = f.db.Write(database.FindingTable, finding.ID, finding); err != nil {
-            return
-        }
-
-        diff := diffpkg.New(finding.Diff)
-        for i, stringFound := range driverFinding.StringsFound {
-            stringFoundTrimmed := strings.TrimSpace(stringFound)
-
-            // Find line
-            diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
-                return line.CodeContains(stringFoundTrimmed)
-            })
-            lineI := diff.LineI
-
-            findingStringID := database.CreateHashID(fmt.Sprintf("%s-%d", finding.ID, i))
-            findingString := &database.FindingString{
-                ID:        findingStringID,
-                FindingID: finding.ID,
-                String:    stringFoundTrimmed,
-                Index:     i,
-                StartLine: lineI,
-            }
-            if err = f.db.Write(database.FindingStringTable, findingString.ID, findingString); err != nil {
+    for _, dfc := range dc.FileChanges {
+        for _, df := range dfc.Findings {
+            err = f.processFinding(dc, dfc, df)
+            if err != nil {
                 return
             }
         }
     }
 
     return
+}
+
+func (f *Finder) processFinding(dc *DriverCommit, dfc *DriverFileChange, df *DriverFinding) (err error) {
+
+    findingID := database.CreateHashID(dc.CommitHash, df.Rule.Name, dfc.Path,
+        df.FileRange.StartLineNum, df.FileRange.StartIndex, df.FileRange.EndLineNum, df.FileRange.EndIndex)
+
+    // Collect secrets
+    secrets := f.getSecretsFromFinding(df)
+    if secrets == nil {
+        f.log.WithField("findingID", findingID).Debug("no secrets found for finding, not saving")
+        return
+    }
+
+    // Get code excerpt
+    codeExcerpt := getExcerpt(dfc.FileContents, df.FileRange.StartLineNum, df.FileRange.EndLineNum-df.FileRange.StartLineNum+1)
+
+    // Save finding
+    finding := &database.Finding{
+        ID:               findingID,
+        CommitID:         dc.CommitHash,
+        Rule:             df.Rule.Name,
+        Path:             dfc.Path,
+        StartLineNum:     df.FileRange.StartLineNum,
+        StartIndex:       df.FileRange.StartIndex,
+        EndLineNum:       df.FileRange.EndLineNum,
+        EndIndex:         df.FileRange.EndIndex,
+        Code:             codeExcerpt,
+        Diff:             dfc.Diff,
+        SecretsProcessed: df.SecretsProcessed,
+    }
+    if err = f.db.WriteFinding(finding); err != nil {
+        return
+    }
+
+    for _, secret := range secrets {
+        if err = f.db.WriteSecret(secret); err != nil {
+            return
+        }
+
+        decision := &database.Decision{
+            ID:        database.CreateHashID(findingID, secret.ID),
+            FindingID: findingID,
+            SecretID:  secret.ID,
+            Decision:  decisionenum.DoNotKnowYet{}.New(),
+        }
+        if err = f.db.WriteDecision(decision); err != nil {
+            return
+        }
+    }
+
+    return
+}
+
+func (f *Finder) getSecretsFromFinding(df *DriverFinding) (secrets []*database.Secret) {
+    if df.SecretsProcessed && df.SecretValues != nil {
+        for _, secretValue := range df.SecretValues {
+            secretID := database.CreateHashID(secretValue)
+            if ! f.whitelistSecretIDSet.Contains(secretID) {
+                f.log.WithField("secretID", secretID).Debug("secrets whitelisted by ID, skipping secret")
+            }
+            secret := &database.Secret{
+                ID:    secretID,
+                Value: secretValue,
+            }
+            secrets = append(secrets, secret)
+        }
+    }
+    return
+}
+
+func getExcerpt(contents string, fromLineNum int, lineCount int) (result string) {
+    lineNum := 1
+    theRest := contents
+    toLineNum := fromLineNum + lineCount
+    for {
+        index := strings.Index(theRest, "\n")
+        if index == -1 {
+            result += theRest
+            return
+        }
+        if lineNum >= fromLineNum {
+            result += theRest[:index+1]
+        }
+        theRest = theRest[index+1:]
+        lineNum += 1
+        if lineNum == toLineNum {
+            return
+        }
+    }
 }
