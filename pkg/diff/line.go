@@ -8,31 +8,34 @@ import (
 type (
     Line struct {
         fmt.Stringer
-        LineI      int
+        LineNum    int
         Line       string
         Pre        string
         Code       string
+        IsEqu      bool
         IsAdd      bool
         IsDel      bool
         IsAddOrDel bool
     }
 )
 
-func NewLine(lineString string, lineI int) *Line {
+func NewLine(lineString string, lineNum int) *Line {
     if lineString == "" {
         return &Line{}
     }
 
     pre := lineString[:1]
     code := lineString[1:]
-    isAdd := pre == "+"
-    isDel := pre == "-"
+    isEqu := pre == EqualPrefix
+    isAdd := pre == AddPrefix
+    isDel := pre == DeletePrefix
 
     return &Line{
-        LineI:      lineI,
+        LineNum:    lineNum,
         Line:       lineString,
         Pre:        pre,
         Code:       code,
+        IsEqu:      isEqu,
         IsAdd:      isAdd,
         IsDel:      isDel,
         IsAddOrDel: isAdd || isDel,

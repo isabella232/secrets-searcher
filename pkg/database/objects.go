@@ -2,51 +2,56 @@ package database
 
 import (
     "github.com/pantheon-systems/search-secrets/pkg/database/enum/decision"
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/reason"
+    "time"
 )
 
 const (
-    DecisionTable      = "decision"
-    FindingTable       = "finding"
-    FindingStringTable = "finding-string"
-    RepoTable          = "repo"
-    SecretTable        = "secret"
+    CommitTable   = "commit"
+    DecisionTable = "decision"
+    FindingTable  = "finding"
+    RepoTable     = "repo"
+    SecretTable   = "secret"
 )
 
 type (
-    Decision struct {
-        ID              string
-        FindingStringID string
-        SecretID        string
-        DecisionValue   string
-        Decision        decision.DecisionEnum `json:"-"`
-    }
-    Finding struct {
+    Commit struct {
         ID          string
         RepoID      string
-        Branch      string
         Commit      string
         CommitHash  string
-        Diff        string
-        Path        string
-        PrintDiff   string
-        ReasonValue string
-        Reason      reason.ReasonEnum `json:"-"`
+        Date        time.Time
+        AuthorEmail string
     }
-    FindingString struct {
-        ID        string
-        FindingID string
-        String    string
-        Index     int
-        StartLine int
+    Decision struct {
+        ID            string
+        FindingID     string
+        SecretID      string
+        Decision      decision.DecisionEnum `json:"-"`
+        DecisionValue string
+    }
+    Finding struct {
+        ID               string
+        CommitID         string
+        Rule             string
+        Path             string
+        StartLineNum     int
+        StartIndex       int
+        EndLineNum       int
+        EndIndex         int
+        Code             string
+        Diff             string
+        SecretsProcessed bool
     }
     Secret struct {
         ID    string
         Value string
     }
     Repo struct {
-        ID     string
-        Name   string
-        SSHURL string
+        ID       string
+        Name     string
+        Owner    string
+        FullName string
+        SSHURL   string
+        HTMLURL  string
     }
 )

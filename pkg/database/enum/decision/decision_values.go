@@ -1,6 +1,6 @@
 package decision
 
-//go:generate sh -c "go-genums Decision value string pkg/database/enum/decision/values.go > pkg/database/enum/decision/decision.go"/
+//go:generate sh -c "go-genums Decision value string pkg/database/enum/decision/processor_type_values.go > pkg/database/enum/decision/processor_type.go"/
 
 const (
     valueNeedsInvestigation         = "needs-investigation"
