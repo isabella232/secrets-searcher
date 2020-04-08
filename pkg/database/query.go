@@ -2,8 +2,6 @@ package database
 
 import (
     "encoding/json"
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/decision"
-    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
 )
 
@@ -158,48 +156,35 @@ func (d *Database) WriteSecret(obj *Secret) (err error) {
     return
 }
 
-// Decision
+// SecretFinding
 
-func (d *Database) GetDecision(id string) (result *Decision, err error) {
-    if err = d.read(DecisionTable, id, &result); err != nil {
-        return
-    }
-
-    result.Decision = decision.NewDecisionFromValue(result.DecisionValue)
-    if result.Decision == nil {
-        err = errors.Errorv("unknown decision", result.DecisionValue)
+func (d *Database) GetSecretFinding(id string) (result *SecretFinding, err error) {
+    if err = d.read(SecretFindingTable, id, &result); err != nil {
         return
     }
 
     return
 }
 
-func (d *Database) GetDecisions() (result []*Decision, err error) {
-    lines, err := d.readAll(DecisionTable)
+func (d *Database) GetSecretFindings() (result []*SecretFinding, err error) {
+    lines, err := d.readAll(SecretFindingTable)
     if err != nil {
         return
     }
 
     for _, line := range lines {
-        var obj *Decision
+        var obj *SecretFinding
         if err = json.Unmarshal([]byte(line), &obj); err != nil {
             return
         }
-
-        obj.Decision = decision.NewDecisionFromValue(obj.DecisionValue)
-        if obj.Decision == nil {
-            err = errors.Errorv("unknown decision", obj.DecisionValue)
-            return
-        }
-
         result = append(result, obj)
     }
 
     return
 }
 
-func (d *Database) GetDecisionsForSecret(secret *Secret) (result []*Decision, err error) {
-    decs, err := d.GetDecisions()
+func (d *Database) GetSecretFindingsBySecret(secret *Secret) (result []*SecretFinding, err error) {
+    decs, err := d.GetSecretFindings()
     if err != nil {
         return
     }
@@ -213,8 +198,7 @@ func (d *Database) GetDecisionsForSecret(secret *Secret) (result []*Decision, er
     return
 }
 
-func (d *Database) WriteDecision(obj *Decision) (err error) {
-    obj.DecisionValue = obj.Decision.Value()
-    err = d.write(DecisionTable, obj.ID, obj)
+func (d *Database) WriteSecretFinding(obj *SecretFinding) (err error) {
+    err = d.write(SecretFindingTable, obj.ID, obj)
     return
 }

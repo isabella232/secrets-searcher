@@ -1,12 +1,15 @@
 package reporter
 
+//go:generate templify -p reporter -o report_template.go source/report.gohtml
+
 import (
     "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/github"
     "github.com/sirupsen/logrus"
+    "gopkg.in/yaml.v2"
     "html/template"
+    "io/ioutil"
     "os"
     "path"
     "path/filepath"
@@ -15,54 +18,69 @@ import (
 
 type (
     Reporter struct {
-        githubAPI *github.API
-        dir       string
-        db        *database.Database
-        log       *logrus.Logger
+        dir            string
+        secretsDir     string
+        reportFilePath string
+        db             *database.Database
+        log            *logrus.Logger
     }
     reportData struct {
-        Secrets []secretData
+        ReportDate time.Time
+        Secrets    []secretData
     }
     secretData struct {
-        ID       string
-        Value    string
-        Findings []findingData
+        ID       string        `yaml:"secret-id"`
+        Value    string        `yaml:"value"`
+        Findings []findingData `yaml:"findings"`
     }
     findingData struct {
-        RuleName       string
-        RepoFullLink   linkData
-        CommitHashLink linkData
-        CommitDate     time.Time
-        CommitAuthor   string
-        FileLineLink   linkData
-        Code           string
-        Diff           string
+        ID                  string    `yaml:"finding-id"`
+        RuleName            string    `yaml:"rule"`
+        RepoFullLink        linkData  `yaml:"repo"`
+        CommitHashLink      linkData  `yaml:"commit"`
+        CommitHashLinkShort linkData  `yaml:"-"`
+        CommitDate          time.Time `yaml:"commit-date"`
+        CommitAuthorEmail   string    `yaml:"-"`
+        CommitAuthorFull    string    `yaml:"commit-author"`
+        FileLineLink        linkData  `yaml:"file-location"`
+        FileLineLinkShort   linkData  `yaml:"-"`
+        CodeShort           string    `yaml:"-"`
+        Code                string    `yaml:"code"`
+        Diff                string    `yaml:"diff"`
     }
     linkData struct {
-        Label string
-        URL   string
+        Label   string `yaml:"label"`
+        URL     string `yaml:"url"`
+        Tooltip string `yaml:"tooltip"`
     }
 )
 
-func New(githubAPI *github.API, dir string, db *database.Database, log *logrus.Logger) *Reporter {
+func New(dir string, db *database.Database, log *logrus.Logger) *Reporter {
     return &Reporter{
-        githubAPI: githubAPI,
-        dir:       dir,
-        db:        db,
-        log:       log,
+        dir:            dir,
+        secretsDir:     filepath.Join(dir, "secrets"),
+        reportFilePath: filepath.Join(dir, "report.html"),
+        db:             db,
+        log:            log,
     }
 }
 
 func (r *Reporter) PrepareReport() (err error) {
+    if _, err = os.Stat(r.dir); !os.IsNotExist(err) {
+        return errors.Errorv("report directory already exists, cannot prepare report", r.dir)
+    }
+
     if err := os.MkdirAll(r.dir, 0700); err != nil {
         return errors.Wrapv(err, "unable to create report directory", r.dir)
     }
+    if err := os.MkdirAll(r.secretsDir, 0700); err != nil {
+        return errors.Wrapv(err, "unable to create secrets directory", r.secretsDir)
+    }
 
-    var reportFilePath = filepath.Join(r.dir, "report.html")
     var reportFile *os.File
-    reportFile, err = os.Create(reportFilePath)
+    reportFile, err = os.Create(r.reportFilePath)
     if err != nil {
-        return
+        return errors.Wrapv(err, "unable to create report file", r.reportFilePath)
     }
 
     var reportData *reportData
@@ -72,11 +90,17 @@ func (r *Reporter) PrepareReport() (err error) {
     }
 
     var tmpl *template.Template
-    tmpl, err = template.ParseFiles("layout.gohtml")
+    tmpl = template.New("report")
+    tmpl, err = tmpl.Parse(report_templateTemplate())
+    if err != nil {
+        return err
+    }
+    err = tmpl.Execute(reportFile, reportData)
+
+    err = r.outputSecrets(reportData)
     if err != nil {
         return
     }
-    err = tmpl.Execute(reportFile, reportData)
 
     return
 }
@@ -88,7 +112,7 @@ func (r *Reporter) buildReportData() (result *reportData, err error) {
         return
     }
 
-    result = &reportData{}
+    var reportSecrets []secretData
     for _, secret := range secrets {
         var secretData *secretData
         secretData, err = r.buildSecretData(secret)
@@ -96,15 +120,20 @@ func (r *Reporter) buildReportData() (result *reportData, err error) {
             return
         }
 
-        result.Secrets = append(result.Secrets, *secretData)
+        reportSecrets = append(reportSecrets, *secretData)
+    }
+
+    result = &reportData{
+        ReportDate: time.Now(),
+        Secrets:    reportSecrets,
     }
 
     return
 }
 
 func (r *Reporter) buildSecretData(secret *database.Secret) (result *secretData, err error) {
-    var decs []*database.Decision
-    decs, err = r.db.GetDecisionsForSecret(secret)
+    var decs []*database.SecretFinding
+    decs, err = r.db.GetSecretFindingsBySecret(secret)
     if err != nil {
         return
     }
@@ -129,7 +158,7 @@ func (r *Reporter) buildSecretData(secret *database.Secret) (result *secretData,
     return
 }
 
-func (r *Reporter) buildFindingData(dec *database.Decision) (result findingData, err error) {
+func (r *Reporter) buildFindingData(dec *database.SecretFinding) (result findingData, err error) {
     var finding *database.Finding
     finding, err = r.db.GetFinding(dec.FindingID)
     if err != nil {
@@ -148,22 +177,47 @@ func (r *Reporter) buildFindingData(dec *database.Decision) (result findingData,
         return
     }
 
-    //var ghCommit *github2.RepositoryCommit
-    //ghCommit, err = r.githubAPI.GetChange("pantheon-systems", repo.Name, commit.CommitHash)
-    //fmt.Println(ghCommit)
-
     commitURL := path.Join(repo.HTMLURL, "commit", commit.CommitHash)
+
     fileLineURL := getLineURLLink(repo, commit, finding)
+    fileLineLabel := fmt.Sprintf("%s, line %d", finding.Path, finding.StartLineNum)
+    fileLineLink := linkData{Label: fileLineLabel, URL: fileLineURL}
+
+    fileLineShortLabel := fmt.Sprintf("%s, line %d", path.Base(finding.Path), finding.StartLineNum)
+    fileLineShortLink := linkData{Label: fileLineShortLabel, URL: fileLineURL, Tooltip: fileLineLabel}
 
     result = findingData{
-        RuleName:       finding.Rule,
-        RepoFullLink:   linkData{Label: repo.FullName, URL: repo.HTMLURL},
-        CommitHashLink: linkData{Label: commit.CommitHash[:7], URL: commitURL},
-        CommitDate:     commit.Date,
-        CommitAuthor:   "Unknown",
-        FileLineLink:   linkData{Label: finding.Path, URL: fileLineURL},
-        Code:           finding.Code,
-        Diff:           finding.Diff,
+        ID:                  finding.ID,
+        RuleName:            finding.Rule,
+        RepoFullLink:        linkData{Label: repo.FullName, URL: repo.HTMLURL},
+        CommitHashLink:      linkData{Label: commit.CommitHash, URL: commitURL},
+        CommitHashLinkShort: linkData{Label: commit.CommitHash[:7], URL: commitURL, Tooltip: commit.CommitHash},
+        CommitDate:          commit.Date,
+        CommitAuthorEmail:   commit.AuthorEmail,
+        CommitAuthorFull:    commit.AuthorFull,
+        FileLineLink:        fileLineLink,
+        FileLineLinkShort:   fileLineShortLink,
+        Code:                finding.Code,
+        Diff:                finding.Diff,
+    }
+
+    return
+}
+
+func (r *Reporter) outputSecrets(data *reportData) (err error) {
+    for _, secretData := range data.Secrets {
+        filePath := filepath.Join(r.secretsDir, fmt.Sprintf("secret-%s.yaml", secretData.ID))
+
+        var bytes []byte
+        bytes, err = yaml.Marshal(secretData)
+        if err != nil {
+            return
+        }
+
+        err = ioutil.WriteFile(filePath, bytes, 0644)
+        if err != nil {
+            return
+        }
     }
 
     return
