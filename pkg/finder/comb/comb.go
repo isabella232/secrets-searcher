@@ -1,9 +1,10 @@
 package comb
 
 import (
-    "bytes"
+    diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/finder"
-    rulepkg "github.com/pantheon-systems/search-secrets/pkg/rule"
+    rulepkg "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "gopkg.in/src-d/go-git.v4"
@@ -49,9 +50,12 @@ func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*r
         }
     }()
 
+    log := c.log.WithField("repo", repoName)
+
     var gitRepo *git.Repository
     gitRepo, err = git.PlainOpen(cloneDir)
     if err != nil {
+        out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to clone into directory", cloneDir)}
         return
     }
 
@@ -73,6 +77,7 @@ func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*r
     var branchIter gitstorer.ReferenceIter
     branchIter, err = gitRepo.Branches()
     if err != nil {
+        out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to get branches")}
         return
     }
 
@@ -83,8 +88,9 @@ func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*r
     })
 
     for _, branch := range branches {
-        err = c.findInBranch(search, branch)
+        err = c.findInBranch(search, branch, log)
         if err != nil {
+            out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to find in branch", branch)}
             return
         }
     }
@@ -92,7 +98,7 @@ func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*r
     return
 }
 
-func (c *Comb) findInBranch(search *searchState, branch *gitplumbing.Reference) (err error) {
+func (c *Comb) findInBranch(search *searchState, branch *gitplumbing.Reference, log *logrus.Entry) (err error) {
     var history gitobject.CommitIter
     history, err = search.gitRepo.Log(&git.LogOptions{From: branch.Hash(), Order: git.LogOrderCommitterTime})
     if err != nil {
@@ -134,7 +140,8 @@ func (c *Comb) findInBranch(search *searchState, branch *gitplumbing.Reference) 
     })
 
     for _, commit := range commits {
-        err = c.findInCommit(search, commit)
+        newLog := log.WithFields(logrus.Fields{"commit": commit.Hash.String()})
+        err = c.findInCommit(search, commit, newLog)
         if err != nil {
             return
         }
@@ -143,12 +150,9 @@ func (c *Comb) findInBranch(search *searchState, branch *gitplumbing.Reference) 
     return
 }
 
-func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit) (err error) {
-    log := c.log.WithFields(logrus.Fields{
-        "commit": commit.Hash.String(),
-        "repo":   search.repoName,
-    })
-    log.Debug("Searching commit")
+func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit, log *logrus.Entry) (err error) {
+    log.WithFields(logrus.Fields{"date": commit.Committer.When.Format("2006-01-02")}).
+        Debug("searching commit")
 
     if len(commit.ParentHashes) == 0 {
         log.Debug("No parent commits found")
@@ -186,7 +190,8 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit) (err 
     var fileChanges []*finder.DriverFileChange
     for _, change := range changes {
         var driverFileChange *finder.DriverFileChange
-        driverFileChange, err = c.findInFileChange(search, commit, change)
+        newLog := log.WithField("file", change.To.Name)
+        driverFileChange, err = c.findInFileChange(search, commit, change, newLog)
         if err != nil {
             return
         }
@@ -202,6 +207,7 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit) (err 
             CommitHash:  commit.Hash.String(),
             Date:        commit.Committer.When,
             AuthorEmail: commit.Author.Email,
+            AuthorFull:  commit.Author.String(),
             FileChanges: fileChanges,
         }}
     }
@@ -209,75 +215,54 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit) (err 
     return
 }
 
-func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, fileChange *gitobject.Change) (result *finder.DriverFileChange, err error) {
-
-    // Get file patch
-    var patch *gitobject.Patch
-    patch, err = fileChange.Patch()
-    if err != nil {
-        return
-    }
-    filePatch := patch.FilePatches()[0]
-
-    // Get file
-    _, changedFile := filePatch.Files()
-    if changedFile == nil {
-        // Deleted file
-        return
-    }
-    filePath := changedFile.Path()
-
-    if search.whitelistPath.MatchStringAny(filePath) {
-        c.log.WithField("filePath", filePath).Debug("file whitelisted and skipped")
+func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, fileChange *gitobject.Change, log *logrus.Entry) (result *finder.DriverFileChange, err error) {
+    // Deleted file?
+    if fileChange.To.Name == "" {
         return
     }
 
-    chunks := filePatch.Chunks()
-
-    // Get diff
-    buf := bytes.NewBuffer(nil)
-    encoder := gitdiff.NewUnifiedEncoder(buf, 3)
-    if err = encoder.Encode(patch); err != nil {
-        return
-    }
-    diffString := buf.String()
-
-    var file *gitobject.File
-    file, err = commit.File(filePath)
-    if err != nil {
+    if search.whitelistPath.MatchStringAny(fileChange.To.Name, "") {
+        log.Debug("file whitelisted by path and skipped")
         return
     }
 
-    var fileContents string
-    fileContents, err = file.Contents()
-    if err != nil {
+    context := rulepkg.NewFileChangeContext(fileChange)
+
+    var hasCodeChanges bool
+    hasCodeChanges, err = context.HasCodeChanges()
+    if err != nil || ! hasCodeChanges {
         return
     }
 
     var findings []*finder.DriverFinding
-
     for _, rule := range search.rules {
         var fileChangeFindings []*rulepkg.FileChangeFinding
-        fileChangeFindings, err = rule.Processor.FindInFileChange(fileChange, chunks, diffString)
+        fileChangeFindings, err = rule.Processor.FindInFileChange(context)
         if err != nil {
             return
         }
 
         for _, fileChangeFinding := range fileChangeFindings {
             findings = append(findings, &finder.DriverFinding{
-                Rule:             rule,
-                FileRange:        fileChangeFinding.FileRange,
-                SecretsProcessed: fileChangeFinding.SecretsProcessed,
-                SecretValues:     fileChangeFinding.SecretValues,
+                Rule:         rule,
+                FileRange:    fileChangeFinding.FileRange,
+                SecretValues: fileChangeFinding.SecretValues,
             })
         }
     }
 
-    currentFileLineNumber := 1
+    // Find in each chunk
+    var chunks []gitdiff.Chunk
+    chunks, err = context.Chunks()
+    if err != nil {
+        return
+    }
 
+    currentFileLineNumber := 1
+    currentDiffLineNumber := 1
     for _, chunk := range chunks {
         var ff []*finder.DriverFinding
-        ff, err = c.findInChunk(search, chunk, &currentFileLineNumber)
+        ff, err = c.findInChunk(search, chunk, &currentFileLineNumber, &currentDiffLineNumber, log)
         if err != nil {
             return
         }
@@ -297,10 +282,28 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
     findings = findingsNew
 
     if findings != nil {
+        var file *gitobject.File
+        file, err = commit.File(fileChange.To.Name)
+        if err != nil {
+            return
+        }
+
+        var fileContents string
+        fileContents, err = file.Contents()
+        if err != nil {
+            return
+        }
+
+        var diff *diffpkg.Diff
+        diff, err = context.Diff()
+        if err != nil {
+            return
+        }
+
         result = &finder.DriverFileChange{
-            Path:         filePath,
+            Path:         fileChange.To.Name,
             FileContents: fileContents,
-            Diff:         diffString,
+            Diff:         diff.String(),
             Findings:     findings,
         }
     }
@@ -308,7 +311,7 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
     return
 }
 
-func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFileLineNumber *int) (result []*finder.DriverFinding, err error) {
+func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFileLineNumber, currentDiffLineNumber *int, log *logrus.Entry) (result []*finder.DriverFinding, err error) {
     chunkString := chunk.Content()
 
     // Remove the trailing line break
@@ -319,10 +322,18 @@ func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFile
 
     switch chunk.Type() {
 
+    case gitdiff.Delete:
+
+        // Advance to the first line of the next chunk
+        lineCount := countRunes(chunkString, '\n') + 1
+        *currentDiffLineNumber += lineCount
+
     case gitdiff.Equal:
 
         // Advance to the first line of the next chunk
-        *currentFileLineNumber += countRunes(chunkString, '\n') + 1
+        lineCount := countRunes(chunkString, '\n') + 1
+        *currentFileLineNumber += lineCount
+        *currentDiffLineNumber += lineCount
 
     case gitdiff.Add:
 
@@ -335,38 +346,46 @@ func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFile
             }
 
             for _, rule := range search.rules {
-                var lineFindings []*rulepkg.LineFinding
-                lineFindings, err = rule.Processor.FindInLine(line)
+                var ff []*finder.DriverFinding
+                newLog := log.WithField("rule", rule.Name)
+                ff, err = c.evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber, line, rule, newLog)
                 if err != nil {
                     return
                 }
 
-                for _, lineFinding := range lineFindings {
-
-                    secrets := lineFinding.SecretValues
-                    if ! lineFinding.SecretsProcessed {
-                        secrets = []string{lineFinding.LineRange.GetStringFrom(line)}
-                    }
-
-                    result = append(result, &finder.DriverFinding{
-                        Rule: rule,
-                        FileRange: &structures.FileRange{
-                            StartLineNum: *currentFileLineNumber,
-                            StartIndex:   lineFinding.LineRange.StartIndex,
-                            EndLineNum:   *currentFileLineNumber,
-                            EndIndex:     lineFinding.LineRange.EndIndex,
-                        },
-                        SecretsProcessed: true,
-                        SecretValues:     secrets,
-                    })
-                }
+                result = append(result, ff...)
             }
 
             // Advance to the next line
             *currentFileLineNumber += 1
+            *currentDiffLineNumber += 1
         }
     }
 
+    return
+}
+
+func (c *Comb) evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber *int, line string, rule *rulepkg.Rule, log *logrus.Entry) (result []*finder.DriverFinding, err error) {
+    var lineFindings []*rulepkg.LineFinding
+    lineFindings, err = rule.Processor.FindInLine(line)
+    if err != nil {
+        return
+    }
+
+    for _, lineFinding := range lineFindings {
+        result = append(result, &finder.DriverFinding{
+            Rule: rule,
+            FileRange: &structures.FileRange{
+                StartLineNum:     *currentFileLineNumber,
+                StartIndex:       lineFinding.LineRange.StartIndex,
+                EndLineNum:       *currentFileLineNumber,
+                EndIndex:         lineFinding.LineRange.EndIndex,
+                StartDiffLineNum: *currentDiffLineNumber,
+                EndDiffLineNum:   *currentDiffLineNumber,
+            },
+            SecretValues: lineFinding.SecretValues,
+        })
+    }
     return
 }
 

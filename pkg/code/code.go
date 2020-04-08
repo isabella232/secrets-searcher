@@ -31,10 +31,13 @@ func New(githubAPI *github.API, organization, codeDir string, repoFilter *struct
     }
 }
 
-func (c *Code) PrepareRepos() (err error) {
-    err = c.pullRepoData()
-    if err != nil {
-        return
+func (c *Code) PrepareCode() (err error) {
+    if c.db.TableExists(database.RepoTable) {
+        return errors.New("one or more code tables already exist, cannot prepare code")
+    }
+
+    if err = c.pullRepoData(); err != nil {
+        return errors.WithMessage(err, "unable to pull repo data")
     }
 
     return c.cloneRepos()
@@ -45,14 +48,9 @@ func (c *Code) CloneDir(repoName string) string {
 }
 
 func (c *Code) pullRepoData() (err error) {
-    if c.db.TableExists(database.RepoTable) {
-        c.log.Warn("repo table already exists, skipping")
-        return
-    }
-
     ghRepos, err := c.githubAPI.GetRepositoriesByOrganization(c.organization)
     if err != nil {
-        return
+        return errors.WithMessagev(err, "unable to get repositories", c.organization)
     }
 
     for _, ghRepo := range ghRepos {
@@ -72,7 +70,7 @@ func (c *Code) pullRepoData() (err error) {
             HTMLURL:  ghRepo.GetHTMLURL(),
         })
         if err != nil {
-            return
+            return errors.WithMessage(err, "unable to write repo")
         }
     }
 
@@ -82,20 +80,21 @@ func (c *Code) pullRepoData() (err error) {
 func (c *Code) cloneRepos() (err error) {
     repos, err := c.db.GetReposFiltered(c.repoFilter)
     if err != nil {
-        return
+        return errors.WithMessage(err, "unable to get filtered list of repos")
     }
 
     for _, repo := range repos {
-        err = c.cloneRepo(repo)
+        newLog := c.log.WithField("repo", repo.Name)
+        err = c.cloneRepo(repo, newLog)
         if err != nil {
-            return
+            return errors.WithMessage(err, "unable to clone repo")
         }
     }
 
     return
 }
 
-func (c *Code) cloneRepo(repo *database.Repo) (err error) {
+func (c *Code) cloneRepo(repo *database.Repo, log *logrus.Entry) (err error) {
     cloneDir := c.CloneDir(repo.Name)
 
     // Check if the code dir exists for repo
@@ -105,6 +104,7 @@ func (c *Code) cloneRepo(repo *database.Repo) (err error) {
     }
 
     // Clone
+    log.Debug("cloning repo")
     co := &git.CloneOptions{URL: repo.SSHURL, Progress: os.Stdout}
     if _, err = git.PlainClone(cloneDir, false, co); err != nil {
         err = errors.Wrapv(err, "unable to clone repo", repo.SSHURL, cloneDir)

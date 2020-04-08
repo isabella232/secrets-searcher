@@ -1,0 +1,164 @@
+{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}
+{{define "link"}}<a href="{{.URL}}" title="{{.Tooltip}}" data-toggle="tooltip"
+                    data-placement="top">{{.Label}}</a>{{end}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Title</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        body {
+            font-size: 14px;
+        }
+
+        pre {
+            padding: 5px;
+            background-color: gainsboro;
+        }
+
+        .finding-code pre {
+            max-width: 200px;
+            max-height: 200px;
+            text-overflow: ellipsis;
+        }
+
+        .finding-full {
+            display: table-row;
+        }
+
+        .finding-full.collapsed {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <h2>Search Secrets Report</h2>
+    <p>
+        Completed: {{.ReportDate.Format "01/02/2006 15:04:05"}}
+    </p>
+    <h2>Secrets</h2>
+    {{if not .Secrets}}
+        <p>No secrets were found.</p>
+    {{end}}
+    {{range .Secrets}}
+        <div class="secret" style="margin-bottom: 50px">
+            <h3>Secret {{.ID}}</h3>
+
+            <div class="secret-value">
+                <pre><code>{{.Value}}</code></pre>
+            </div>
+
+            <h4>Findings</h4>
+            <table class="table findings">
+                <tr>
+                    <th scope="col"></th>
+                    <th scope="col">Rule</th>
+                    <th scope="col">Repo</th>
+                    <th scope="col">Commit</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Author</th>
+                    <th scope="col">Line</th>
+                </tr>
+                {{range $i, $finding := .Findings}}
+                    <tr class="finding">
+                        <td class="expander">
+                            <a href="javascript:" class="material-icons"></a>
+                        </td>
+                        <td>{{$finding.RuleName}}</td>
+                        <td>{{template "link" $finding.RepoFullLink}}</td>
+                        <td>{{template "link" $finding.CommitHashLinkShort}}</td>
+                        <td>{{$finding.CommitDate.Format "01/02/2006"}}</td>
+                        <td>{{$finding.CommitAuthorEmail}}</td>
+                        <td>{{template "link" $finding.FileLineLinkShort}}</td>
+                    </tr>
+                    <tr class="finding-full collapsed">
+                        <td></td>
+                        <td colspan="6">
+
+                            <table class="table finding-full">
+                                <tr>
+                                    <th scope="row">Rule</th>
+                                    <td>{{$finding.RuleName}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Repo</th>
+                                    <td>{{template "link" $finding.RepoFullLink}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Commit</th>
+                                    <td>{{template "link" $finding.CommitHashLink}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Date</th>
+                                    <td>{{$finding.CommitDate.Format "01/02/2006 15:04:05"}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Author</th>
+                                    <td>{{$finding.CommitAuthorFull}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Line</th>
+                                    <td>{{template "link" $finding.FileLineLink}}</td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Code</th>
+                                    <td>
+                                        <pre><code>{{$finding.Code}}</code></pre>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">Diff</th>
+                                    <td>
+                                        <pre><code>{{$finding.Diff}}</code></pre>
+                                    </td>
+                                </tr>
+                            </table>
+
+                        </td>
+                    </tr>
+                {{end}}
+            </table>
+        </div>
+    {{end}}
+</div>
+<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+        integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+        integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+        crossorigin="anonymous"></script>
+<script type="application/javascript">
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip();
+
+        $('.finding').each(function () {
+            const collapsedClass = 'collapsed';
+            let finding = $(this);
+            let findingFull = $(this).next('.finding-full');
+            let expander = finding.find('.expander');
+            let expanderLink = expander.children('a');
+
+            function updateIcon() {
+                expanderLink[0].innerHTML = findingFull.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';
+            }
+
+            function toggleCollapsed() {
+                findingFull.toggleClass(collapsedClass);
+                updateIcon()
+            }
+
+            expanderLink.click(toggleCollapsed);
+            updateIcon()
+        })
+    });
+</script>
+</body>
+</html>

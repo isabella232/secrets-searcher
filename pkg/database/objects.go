@@ -1,16 +1,15 @@
 package database
 
 import (
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/decision"
     "time"
 )
 
 const (
-    CommitTable   = "commit"
-    DecisionTable = "decision"
-    FindingTable  = "finding"
-    RepoTable     = "repo"
-    SecretTable   = "secret"
+    CommitTable        = "commit"
+    FindingTable       = "finding"
+    RepoTable          = "repo"
+    SecretTable        = "secret"
+    SecretFindingTable = "secretfinding"
 )
 
 type (
@@ -20,27 +19,27 @@ type (
         Commit      string
         CommitHash  string
         Date        time.Time
+        AuthorFull  string
         AuthorEmail string
     }
-    Decision struct {
-        ID            string
-        FindingID     string
-        SecretID      string
-        Decision      decision.DecisionEnum `json:"-"`
-        DecisionValue string
+    SecretFinding struct {
+        ID        string
+        FindingID string
+        SecretID  string
     }
     Finding struct {
-        ID               string
-        CommitID         string
-        Rule             string
-        Path             string
-        StartLineNum     int
-        StartIndex       int
-        EndLineNum       int
-        EndIndex         int
-        Code             string
-        Diff             string
-        SecretsProcessed bool
+        ID           string
+        CommitID     string
+        Rule         string
+        Path         string
+        StartLineNum int
+        StartIndex   int
+        EndLineNum   int
+        EndIndex     int
+        Code         string
+        CodePadding  int
+        Diff         string
+        DiffPadding  int
     }
     Secret struct {
         ID    string

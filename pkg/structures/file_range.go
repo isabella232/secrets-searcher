@@ -1,10 +1,12 @@
 package structures
 
 type FileRange struct {
-    StartLineNum int
-    StartIndex   int
-    EndLineNum   int
-    EndIndex     int
+    StartLineNum     int
+    StartIndex       int
+    EndLineNum       int
+    EndIndex         int
+    StartDiffLineNum int
+    EndDiffLineNum int
 }
 
 func (r FileRange) Overlaps(other *FileRange) bool {

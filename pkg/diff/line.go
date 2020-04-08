@@ -2,24 +2,25 @@ package diff
 
 import (
     "fmt"
+    "regexp"
     "strings"
 )
 
 type (
     Line struct {
         fmt.Stringer
-        LineNum    int
-        Line       string
-        Pre        string
-        Code       string
-        IsEqu      bool
-        IsAdd      bool
-        IsDel      bool
-        IsAddOrDel bool
+        LineNumDiff int
+        LineNumFile int
+        Line        string
+        Pre         string
+        Code        string
+        IsEqu       bool
+        IsAdd       bool
+        IsDel       bool
     }
 )
 
-func NewLine(lineString string, lineNum int) *Line {
+func NewLine(lineString string, lineNumDiff, lineNumFile int) *Line {
     if lineString == "" {
         return &Line{}
     }
@@ -31,14 +32,14 @@ func NewLine(lineString string, lineNum int) *Line {
     isDel := pre == DeletePrefix
 
     return &Line{
-        LineNum:    lineNum,
-        Line:       lineString,
-        Pre:        pre,
-        Code:       code,
-        IsEqu:      isEqu,
-        IsAdd:      isAdd,
-        IsDel:      isDel,
-        IsAddOrDel: isAdd || isDel,
+        LineNumDiff: lineNumDiff,
+        LineNumFile: lineNumFile,
+        Line:        lineString,
+        Pre:         pre,
+        Code:        code,
+        IsEqu:       isEqu,
+        IsAdd:       isAdd,
+        IsDel:       isDel,
     }
 }
 
@@ -56,4 +57,8 @@ func (l *Line) CodeStartsWith(substr string) bool {
 
 func (l *Line) CodeEndsWith(substr string) bool {
     return strings.HasSuffix(l.Code, substr)
+}
+
+func (l *Line) CodeMatches(regex *regexp.Regexp) bool {
+    return regex.MatchString(l.Code)
 }

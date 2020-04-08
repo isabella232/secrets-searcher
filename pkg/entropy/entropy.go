@@ -15,15 +15,15 @@ const (
     hexCharset    = "1234567890abcdefABCDEF"
 )
 
-func FindHighEntropyWords(line, charsetName string, lengthThreshold int, entropyThreshold float64) (result []structures.LineRange) {
+func FindHighEntropyWords(unputString, charsetName string, lengthThreshold int, entropyThreshold float64) (result []structures.LineRange) {
     charsetChars, err := getCharsetChars(charsetName)
     if err != nil {
         return
     }
 
-    indexRanges := findLongStringsOfCharset(line, charsetChars, lengthThreshold)
+    indexRanges := findLongStringsOfCharset(unputString, charsetChars, lengthThreshold)
     for _, inRange := range indexRanges {
-        word := inRange.GetStringFrom(line)
+        word := inRange.GetStringFrom(unputString)
         entropy := entropy(word, charsetChars)
         if entropy >= entropyThreshold {
             result = append(result, inRange)

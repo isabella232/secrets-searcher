@@ -4,6 +4,7 @@ import (
     "crypto/sha1"
     "fmt"
     "github.com/nanobox-io/golang-scribble"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "os"
     "path/filepath"
 )
@@ -32,6 +33,16 @@ func (d *Database) TableExists(table string) bool {
     dir := filepath.Join(d.dir, table)
     _, err := os.Stat(dir)
     return !os.IsNotExist(err)
+}
+
+func (d *Database) DeleteTableIfExists(table string) (err error) {
+    if d.TableExists(table) {
+        dir := filepath.Join(d.dir, table)
+        if err = os.RemoveAll(dir); err != nil {
+            return errors.Wrapv(err, "unable to delete table directory", dir)
+        }
+    }
+    return
 }
 
 func (d *Database) write(collection, resource string, v interface{}) error {

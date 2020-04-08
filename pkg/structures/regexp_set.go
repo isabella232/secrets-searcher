@@ -27,11 +27,23 @@ func NewRegexpSetFromStrings(values []string) (result RegexpSet, err error) {
     return
 }
 
-func (r RegexpSet) MatchStringAny(input string) (result bool) {
+func (r RegexpSet) MatchStringAny(input, substringToCompare string) (result bool) {
     for _, re := range r {
-        if re.MatchString(input) {
+        matches := re.FindStringSubmatch(input)
+
+        // Didn't match
+        if matches == nil {
+            continue
+        }
+
+        // Matches, but with no back reference, or nothing to compare, so return true
+        if len(matches) == 1 || substringToCompare == "" {
             return true
         }
+
+        // Compare the first backreference with the provided string
+        return matches[1] == substringToCompare
     }
+
     return false
 }
