@@ -178,7 +178,7 @@ func initArgs() {
     flags.StringSlice(
         "whitelist-secret-dir",
         []string{},
-        "If a corresponding `secret-[SECRETID].json` file is found in this directory, that secret will be whitelisted.")
+        "If a corresponding `secret-[SECRETID].yaml` file is found in this directory, that secret will be whitelisted.")
 }
 
 func initLogging() {
