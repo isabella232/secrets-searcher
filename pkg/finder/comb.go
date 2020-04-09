@@ -1,10 +1,10 @@
-package comb
+package finder
 
 import (
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/finder"
     rulepkg "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/progress"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "gopkg.in/src-d/go-git.v4"
@@ -16,6 +16,12 @@ import (
     "time"
 )
 
+var checker = structures.NewSet(nil)
+
+const (
+    commitProcessingTimeout = 30
+)
+
 type (
     Comb struct {
         log *logrus.Logger
@@ -25,37 +31,48 @@ type (
         repoName       string
         refs           []string
         gitRepo        *git.Repository
-        rules          []*rulepkg.Rule
-        out            chan *finder.DriverResult
+        rules          []rulepkg.Rule
+        out            chan *DriverResult
         searched       structures.Set
         earliestTime   time.Time
         latestTime     time.Time
         earliestCommit string
         latestCommit   string
         whitelistPath  structures.RegexpSet
+        bar            *progress.Bar
     }
 )
 
-func New(log *logrus.Logger) *Comb {
+func NewComb(log *logrus.Logger) *Comb {
     return &Comb{
         log: log,
     }
 }
 
-func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*rulepkg.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, out chan *finder.DriverResult) {
+func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []rulepkg.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, bar *progress.Bar, out chan *DriverResult) {
     var err error
-    defer func() {
-        if err != nil {
-            out <- &finder.DriverResult{Err: err}
-        }
-    }()
 
     log := c.log.WithField("repo", repoName)
+    defer func() {
+    }()
+    // Send an error through the channel
+    defer func() {
+        if panicErr := recover(); panicErr != nil {
+            err = errors.Errorv("find method panic", panicErr)
+            errors.LogEntryError(log, err)
+            return
+        }
+        if err != nil {
+            err = errors.WithMessage(err, "find method exiting with an error")
+            errors.LogEntryError(log, err)
+            out <- &DriverResult{Err: err}
+        }
+    }()
 
     var gitRepo *git.Repository
     gitRepo, err = git.PlainOpen(cloneDir)
     if err != nil {
-        out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to clone into directory", cloneDir)}
+        err = errors.Wrapv(err, "unable to clone into directory", cloneDir)
         return
     }
 
@@ -72,87 +89,76 @@ func (c *Comb) Find(repoID, repoName, cloneDir string, refs []string, rules []*r
         latestCommit:   latestCommit,
         whitelistPath:  whitelistPath,
         out:            out,
+        bar:            bar,
     }
 
-    var branchIter gitstorer.ReferenceIter
-    branchIter, err = gitRepo.Branches()
-    if err != nil {
-        out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to get branches")}
-        return
-    }
-
-    var branches []*gitplumbing.Reference
-    err = branchIter.ForEach(func(branch *gitplumbing.Reference) (err error) {
-        branches = append(branches, branch)
-        return
-    })
-
-    for _, branch := range branches {
-        err = c.findInBranch(search, branch, log)
+    var hashes []gitplumbing.Hash
+    if latestCommit != "" {
+        hashes = []gitplumbing.Hash{gitplumbing.NewHash(latestCommit)}
+    } else {
+        var branchIter gitstorer.ReferenceIter
+        branchIter, err = gitRepo.Branches()
         if err != nil {
-            out <- &finder.DriverResult{Err: errors.Wrapv(err, "unable to find in branch", branch)}
+            err = errors.Wrapv(err, "unable to get branches")
             return
         }
+
+        var branches []*gitplumbing.Reference
+        err = branchIter.ForEach(func(branch *gitplumbing.Reference) (err error) {
+            branches = append(branches, branch)
+            return
+        })
+
+        hashes = []gitplumbing.Hash{}
+        for _, branch := range branches {
+            hashes = append(hashes, branch.Hash())
+        }
     }
-
-    return
-}
-
-func (c *Comb) findInBranch(search *searchState, branch *gitplumbing.Reference, log *logrus.Entry) (err error) {
-    var history gitobject.CommitIter
-    history, err = search.gitRepo.Log(&git.LogOptions{From: branch.Hash(), Order: git.LogOrderCommitterTime})
-    if err != nil {
-        return
-    }
-
-    latestCommitReached := false
 
     var commits []*gitobject.Commit
-    err = history.ForEach(func(commit *gitobject.Commit) (err error) {
-        commitTime := commit.Committer.When
-        if commitTime.After(search.latestTime) {
+    for _, hash := range hashes {
+        err = c.appendCommitsFromCommit(search, hash, &commits)
+        if err != nil {
+            err = errors.Wrapv(err, "unable to find in ancestor commits of commit", hash)
             return
         }
-        if commitTime.Before(search.earliestTime) {
-            return gitstorer.ErrStop
-        }
+    }
 
-        if search.latestCommit != "" {
-            if commit.Hash.String() == search.latestCommit {
-                latestCommitReached = true
-            }
-            if ! latestCommitReached {
-                return
-            }
-        }
+    hashesIndex := structures.NewSet(nil)
+    for _, c := range commits {
+        hashesIndex.Add(c.Hash.String())
+    }
+    dupeCount := len(commits) - len(hashesIndex.Values())
+    if dupeCount > 0 {
+        c.log.Warnf("%d duplicate commits detected", dupeCount)
+    }
 
-        if search.earliestCommit != "" && search.searched.Contains(search.earliestCommit) {
-            return gitstorer.ErrStop
-        }
-        if search.searched.Contains(commit.Hash.String()) {
-            return
-        }
-        search.searched.Add(commit.Hash.String())
-
-        commits = append(commits, commit)
-
-        return
-    })
-
+    bar.Start(len(commits))
     for _, commit := range commits {
         newLog := log.WithFields(logrus.Fields{"commit": commit.Hash.String()})
-        err = c.findInCommit(search, commit, newLog)
-        if err != nil {
-            return
+        timer := time.NewTimer(commitProcessingTimeout * time.Second)
+
+        errs := make(chan error, 1)
+        go func() { errs <- c.findInCommit(search, commit, newLog) }()
+
+        select {
+        case err = <-errs:
+            if err != nil {
+                errors.LogEntryError(newLog, errors.WithMessage(err, "error while processing commit"))
+            }
+        case <-timer.C:
+            errors.LogEntryError(newLog, errors.WithMessagev(err, "timeout while processing commit (secs)", commitProcessingTimeout))
         }
+
+        timer.Stop()
+        bar.Incr()
     }
 
     return
 }
 
 func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit, log *logrus.Entry) (err error) {
-    log.WithFields(logrus.Fields{"date": commit.Committer.When.Format("2006-01-02")}).
-        Debug("searching commit")
+    log.WithField("date", commit.Committer.When.Format("2006-01-02")).Debug("searching commit")
 
     if len(commit.ParentHashes) == 0 {
         log.Debug("No parent commits found")
@@ -187,9 +193,9 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit, log *
         return
     }
 
-    var fileChanges []*finder.DriverFileChange
+    var fileChanges []*DriverFileChange
     for _, change := range changes {
-        var driverFileChange *finder.DriverFileChange
+        var driverFileChange *DriverFileChange
         newLog := log.WithField("file", change.To.Name)
         driverFileChange, err = c.findInFileChange(search, commit, change, newLog)
         if err != nil {
@@ -201,7 +207,7 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit, log *
     }
 
     if fileChanges != nil {
-        search.out <- &finder.DriverResult{Commit: &finder.DriverCommit{
+        search.out <- &DriverResult{Commit: &DriverCommit{
             RepoID:      search.repoID,
             Commit:      commit.Message,
             CommitHash:  commit.Hash.String(),
@@ -215,9 +221,10 @@ func (c *Comb) findInCommit(search *searchState, commit *gitobject.Commit, log *
     return
 }
 
-func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, fileChange *gitobject.Change, log *logrus.Entry) (result *finder.DriverFileChange, err error) {
+func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, fileChange *gitobject.Change, log *logrus.Entry) (result *DriverFileChange, err error) {
     // Deleted file?
     if fileChange.To.Name == "" {
+        log.Trace("file deletion skipped")
         return
     }
 
@@ -226,7 +233,17 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
         return
     }
 
-    context := rulepkg.NewFileChangeContext(fileChange)
+    context := rulepkg.NewFileChangeContext(search.repoName, commit, fileChange, log)
+
+    var isBinary bool
+    isBinary, err = context.IsBinaryOrEmpty()
+    if err != nil {
+        return
+    }
+    if isBinary {
+        log.Trace("empty or binary file skipped")
+        return
+    }
 
     var hasCodeChanges bool
     hasCodeChanges, err = context.HasCodeChanges()
@@ -234,17 +251,17 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
         return
     }
 
-    var findings []*finder.DriverFinding
+    var findings []*DriverFinding
     for _, rule := range search.rules {
         var fileChangeFindings []*rulepkg.FileChangeFinding
-        fileChangeFindings, err = rule.Processor.FindInFileChange(context)
+        fileChangeFindings, err = rule.Processor.FindInFileChange(context, log)
         if err != nil {
             return
         }
 
         for _, fileChangeFinding := range fileChangeFindings {
-            findings = append(findings, &finder.DriverFinding{
-                Rule:         rule,
+            findings = append(findings, &DriverFinding{
+                RuleName:     rule.Name,
                 FileRange:    fileChangeFinding.FileRange,
                 SecretValues: fileChangeFinding.SecretValues,
             })
@@ -261,7 +278,7 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
     currentFileLineNumber := 1
     currentDiffLineNumber := 1
     for _, chunk := range chunks {
-        var ff []*finder.DriverFinding
+        var ff []*DriverFinding
         ff, err = c.findInChunk(search, chunk, &currentFileLineNumber, &currentDiffLineNumber, log)
         if err != nil {
             return
@@ -271,7 +288,7 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
     }
 
     // Remove overlapping findings
-    var findingsNew []*finder.DriverFinding
+    var findingsNew []*DriverFinding
     for _, finding := range findings {
         if overlapsWithAny(finding, findingsNew) {
             continue
@@ -300,7 +317,7 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
             return
         }
 
-        result = &finder.DriverFileChange{
+        result = &DriverFileChange{
             Path:         fileChange.To.Name,
             FileContents: fileContents,
             Diff:         diff.String(),
@@ -311,7 +328,7 @@ func (c *Comb) findInFileChange(search *searchState, commit *gitobject.Commit, f
     return
 }
 
-func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFileLineNumber, currentDiffLineNumber *int, log *logrus.Entry) (result []*finder.DriverFinding, err error) {
+func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFileLineNumber, currentDiffLineNumber *int, log *logrus.Entry) (result []*DriverFinding, err error) {
     chunkString := chunk.Content()
 
     // Remove the trailing line break
@@ -321,20 +338,13 @@ func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFile
     }
 
     switch chunk.Type() {
-
     case gitdiff.Delete:
-
-        // Advance to the first line of the next chunk
         lineCount := countRunes(chunkString, '\n') + 1
         *currentDiffLineNumber += lineCount
-
     case gitdiff.Equal:
-
-        // Advance to the first line of the next chunk
         lineCount := countRunes(chunkString, '\n') + 1
         *currentFileLineNumber += lineCount
         *currentDiffLineNumber += lineCount
-
     case gitdiff.Add:
 
         // For each line in chunk
@@ -346,7 +356,7 @@ func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFile
             }
 
             for _, rule := range search.rules {
-                var ff []*finder.DriverFinding
+                var ff []*DriverFinding
                 newLog := log.WithField("rule", rule.Name)
                 ff, err = c.evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber, line, rule, newLog)
                 if err != nil {
@@ -365,16 +375,59 @@ func (c *Comb) findInChunk(search *searchState, chunk gitdiff.Chunk, currentFile
     return
 }
 
-func (c *Comb) evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber *int, line string, rule *rulepkg.Rule, log *logrus.Entry) (result []*finder.DriverFinding, err error) {
+func (c *Comb) appendCommitsFromCommit(search *searchState, hash gitplumbing.Hash, commits *[]*gitobject.Commit) (err error) {
+    var history gitobject.CommitIter
+    history, err = search.gitRepo.Log(&git.LogOptions{From: hash, Order: git.LogOrderCommitterTime})
+    if err != nil {
+        return
+    }
+
+    latestCommitReached := false
+
+    err = history.ForEach(func(commit *gitobject.Commit) (err error) {
+        commitTime := commit.Committer.When
+        if commitTime.After(search.latestTime) {
+            return
+        }
+        if commitTime.Before(search.earliestTime) {
+            return gitstorer.ErrStop
+        }
+
+        if search.latestCommit != "" {
+            if commit.Hash.String() == search.latestCommit {
+                latestCommitReached = true
+            }
+            if ! latestCommitReached {
+                return
+            }
+        }
+
+        if search.earliestCommit != "" && search.searched.Contains(search.earliestCommit) {
+            return gitstorer.ErrStop
+        }
+        if search.searched.Contains(commit.Hash.String()) {
+            return
+        }
+        search.searched.Add(commit.Hash.String())
+
+        *commits = append(*commits, commit)
+
+        return
+    })
+
+    return
+}
+
+func (c *Comb) evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber *int, line string, rule rulepkg.Rule, log *logrus.Entry) (result []*DriverFinding, err error) {
     var lineFindings []*rulepkg.LineFinding
-    lineFindings, err = rule.Processor.FindInLine(line)
+    lineFindings, err = rule.Processor.FindInLine(line, log)
     if err != nil {
         return
     }
 
     for _, lineFinding := range lineFindings {
-        result = append(result, &finder.DriverFinding{
-            Rule: rule,
+        result = append(result, &DriverFinding{
+            RuleName: rule.Name,
             FileRange: &structures.FileRange{
                 StartLineNum:     *currentFileLineNumber,
                 StartIndex:       lineFinding.LineRange.StartIndex,
@@ -389,7 +442,7 @@ func (c *Comb) evaluateLineWithRule(currentFileLineNumber, currentDiffLineNumber
     return
 }
 
-func overlapsWithAny(input *finder.DriverFinding, others []*finder.DriverFinding) bool {
+func overlapsWithAny(input *DriverFinding, others []*DriverFinding) bool {
     for _, other := range others {
         if other.FileRange.Overlaps(input.FileRange) {
             return true

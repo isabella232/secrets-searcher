@@ -2,30 +2,28 @@ package cmd
 
 import (
     "fmt"
+    "os"
+    "path/filepath"
+    "regexp"
+    "strings"
+    "time"
+
     "github.com/mitchellh/mapstructure"
     apppkg "github.com/pantheon-systems/search-secrets/pkg/app"
     "github.com/pantheon-systems/search-secrets/pkg/database/enum/processor_type"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/finder/processor"
     "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "github.com/spf13/cobra"
     "github.com/spf13/pflag"
     "github.com/spf13/viper"
-    "os"
-    "path/filepath"
-    "regexp"
-    "strings"
-    "time"
 )
 
 const (
-    appName            = "search-secrets"
-    configFileName     = "." + appName
-    configFileExt      = "yaml"
-    configFileBasename = configFileName + "." + configFileExt
-
+    appName    = "search-secrets"
     dateFormat = "2006-01-02"
 )
 
@@ -39,7 +37,9 @@ var (
     cfgFile                 string
     vpr                     *viper.Viper
     log                     *logrus.Logger
+    logWriter               *logwriter.LogWriter
     reportedSecretFileMatch = regexp.MustCompile(`^secret-([0-9a-f]{5,40}).yaml$`)
+    exitCode                = 0
 )
 
 type (
@@ -50,6 +50,7 @@ type (
         LogLevel       string `mapstructure:"log-level"`
         SkipSourcePrep bool   `mapstructure:"skip-source-prep"`
         OutputDir      string `mapstructure:"output-dir"`
+        NonZero        bool   `mapstructure:"non-zero"`
 
         // Source config
         Source sourceConfig `mapstructure:"source"`
@@ -73,6 +74,7 @@ type (
         User         string   `mapstructure:"user"`
         Organization string   `mapstructure:"organization"`
         Repos        []string `mapstructure:"repos"`
+        ExcludeRepos []string `mapstructure:"exclude-repos"`
     }
 
     // Rule config
@@ -103,16 +105,73 @@ type (
     }
 )
 
-func init() {
-    cobra.OnInitialize(initConfig, configureLogging)
-
-    initArgs()
-    initLogging()
-}
-
 func Execute() {
     if err := rootCmd.Execute(); err != nil {
         errors.Fatal(log, errors.Wrap(err, "unable to execute application"))
+    }
+    os.Exit(exitCode)
+}
+
+func init() {
+    initArgs()
+    initLogging()
+    cobra.OnInitialize(initConfig, configureLogging)
+}
+
+func runApp(*cobra.Command, []string) {
+    validateParameters()
+
+    var app *apppkg.App
+    var err error
+
+    var rules []rule.Rule
+    rules, err = buildRules(cfg.RuleConfigs)
+    var earliestTime = cfg.EarliestDate
+    var latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
+
+    var whitelistPath structures.RegexpSet
+    whitelistPath, err = structures.NewRegexpSetFromStrings(cfg.WhitelistPathMatch)
+    if err != nil {
+        log.Fatal(errors.WithMessagev(err, "unable to create regexp set from `whitelist-path-match` parameter", cfg.WhitelistPathMatch))
+    }
+
+    // Build set of secrets to whitelist
+    whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
+    if cfg.WhitelistSecretDir != "" {
+        if err = appendSecretsFromWhitelistDir(&whitelistSecretIDSet, cfg.WhitelistSecretDir); err != nil {
+            log.Fatal(errors.WithMessage(err, "unable to create app"))
+        }
+    }
+
+    app, err = apppkg.New(
+        cfg.SkipSourcePrep,
+        cfg.Source.APIToken,
+        cfg.Source.Organization,
+        cfg.OutputDir,
+        cfg.Source.Repos,
+        cfg.Source.ExcludeRepos,
+        cfg.Refs,
+        rules,
+        earliestTime,
+        latestTime,
+        cfg.EarliestCommit,
+        cfg.LatestCommit,
+        whitelistPath,
+        whitelistSecretIDSet,
+        logWriter,
+        log,
+    )
+
+    if err != nil {
+        log.Fatal(errors.WithMessage(err, "unable to create app"))
+    }
+
+    if err := app.Execute(); err != nil {
+        log.Fatal(errors.WithMessage(err, "unable to execute app"))
+    }
+
+    if cfg.NonZero && app.SecretCount > 0 {
+        exitCode = 3
     }
 }
 
@@ -139,6 +198,10 @@ func initArgs() {
         "output-dir",
         "./output",
         "Output directory.")
+    flags.Bool(
+        "non-zero",
+        false,
+        "If set to true, the command will exit with a non-zero exit code if secrets are found.")
 
     // Source config
     flags.String(
@@ -184,7 +247,7 @@ func initArgs() {
 func initLogging() {
     log = logrus.New()
     log.SetOutput(os.Stdout)
-    logrus.SetFormatter(&logrus.TextFormatter{})
+    log.SetFormatter(&logrus.TextFormatter{})
 }
 
 func initConfig() {
@@ -233,9 +296,16 @@ func configureLogging() {
     }
     log.SetLevel(logLevel)
 
-    // Formatter
-    var fm logrus.Formatter = &logrus.TextFormatter{}
-    log.SetFormatter(fm)
+    // Log file
+    logFilePath := filepath.Join(cfg.OutputDir, "run.log")
+    if err = os.RemoveAll(logFilePath); err != nil {
+        errors.Fatal(log, errors.Wrapv(err, "unable to delete log file"))
+    }
+    logWriter, err = logwriter.New(logFilePath)
+    if err != nil {
+        errors.Fatal(log, errors.Wrapv(err, "unable to build log writer"))
+    }
+    log.SetOutput(logWriter)
 }
 
 func validateParameters() {
@@ -287,58 +357,6 @@ func validateParameters() {
         }
     }
 }
-
-func runApp(*cobra.Command, []string) {
-    validateParameters()
-
-    var app *apppkg.App
-    var err error
-
-    var rules []*rule.Rule
-    rules, err = buildRules(cfg.RuleConfigs)
-    var earliestTime = cfg.EarliestDate
-    var latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
-
-    var whitelistPath structures.RegexpSet
-    whitelistPath, err = structures.NewRegexpSetFromStrings(cfg.WhitelistPathMatch)
-    if err != nil {
-        log.Fatal(errors.WithMessagev(err, "unable to create regexp set from `whitelist-path-match` parameter", cfg.WhitelistPathMatch))
-    }
-
-    // Build set of secrets to whitelist
-    whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
-    if cfg.WhitelistSecretDir != "" {
-        if err = appendSecretsFromWhitelistDir(&whitelistSecretIDSet, cfg.WhitelistSecretDir); err != nil {
-            log.Fatal(errors.WithMessage(err, "unable to create app"))
-        }
-    }
-
-    app, err = apppkg.New(
-        cfg.SkipSourcePrep,
-        cfg.Source.APIToken,
-        cfg.Source.Organization,
-        cfg.OutputDir,
-        cfg.Source.Repos,
-        cfg.Refs,
-        rules,
-        earliestTime,
-        latestTime,
-        cfg.EarliestCommit,
-        cfg.LatestCommit,
-        whitelistPath,
-        whitelistSecretIDSet,
-        log,
-    )
-
-    if err != nil {
-        log.Fatal(errors.WithMessage(err, "unable to create app"))
-    }
-
-    if err := app.Execute(); err != nil {
-        log.Fatal(errors.WithMessage(err, "unable to execute app"))
-    }
-}
-
 func validationAssertTrue(valid bool, configName string, messageTemplate string) {
     if !valid {
         message := fmt.Sprintf(messageTemplate, configName)
@@ -346,7 +364,7 @@ func validationAssertTrue(valid bool, configName string, messageTemplate string)
     }
 }
 
-func buildRules(ruleConfigs []ruleConfig) (result []*rule.Rule, err error) {
+func buildRules(ruleConfigs []ruleConfig) (result []rule.Rule, err error) {
     for _, ruleConf := range ruleConfigs {
         var proc rule.Processor
         proc, err = buildProcessor(ruleConf)
@@ -370,12 +388,12 @@ func buildProcessor(ruleConf ruleConfig) (result rule.Processor, err error) {
 
     switch ruleConf.Processor {
     case processor_type.Regex{}.New().Value():
-        result, err = processor.NewRegexProcessor(ruleConf.RegexString, &whitelistRes, log)
+        result, err = processor.NewRegexProcessor(ruleConf.RegexString, &whitelistRes)
     case processor_type.PEM{}.New().Value():
-        result = processor.NewPEMProcessor(ruleConf.PEMType, &whitelistRes, log)
+        result = processor.NewPEMProcessor(ruleConf.PEMType, &whitelistRes)
     case processor_type.Entropy{}.New().Value():
         ec := ruleConf.EntropyConfig
-        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistRes, true, log)
+        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistRes, true)
     default:
         err = errors.Errorv("unknown search type", ruleConf.Processor)
     }

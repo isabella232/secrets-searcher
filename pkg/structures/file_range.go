@@ -6,7 +6,7 @@ type FileRange struct {
     EndLineNum       int
     EndIndex         int
     StartDiffLineNum int
-    EndDiffLineNum int
+    EndDiffLineNum   int
 }
 
 func (r FileRange) Overlaps(other *FileRange) bool {

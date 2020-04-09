@@ -74,6 +74,12 @@ func LogError(log *logrus.Logger, err error) *logrus.Entry {
 }
 
 // Log error and return logrus.Entry object
+func LogEntryError(log *logrus.Entry, err error) *logrus.Entry {
+    stacktrace := StackTraceString(err)
+    return log.WithError(err).WithField("stacktrace", stacktrace)
+}
+
+// Log error and return logrus.Entry object
 func Fatal(log *logrus.Logger, err error) {
     stacktrace := StackTraceString(err)
     log.WithField("stacktrace", stacktrace).Error(err)

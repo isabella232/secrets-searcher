@@ -106,16 +106,18 @@ func (r *Reporter) PrepareReport() (err error) {
 }
 
 func (r *Reporter) buildReportData() (result *reportData, err error) {
-    var secrets []*database.Secret
-    secrets, err = r.db.GetSecrets()
+    r.log.Debug("getting list of secrets ...")
+
+    var sfsBySecret map[*database.Secret][]*database.SecretFinding
+    sfsBySecret, err = r.db.GetSecretFindingsGroupedBySecret()
     if err != nil {
         return
     }
 
     var reportSecrets []secretData
-    for _, secret := range secrets {
+    for secret, sfs := range sfsBySecret {
         var secretData *secretData
-        secretData, err = r.buildSecretData(secret)
+        secretData, err = r.buildSecretData(secret, sfs)
         if err != nil {
             return
         }
@@ -131,15 +133,9 @@ func (r *Reporter) buildReportData() (result *reportData, err error) {
     return
 }
 
-func (r *Reporter) buildSecretData(secret *database.Secret) (result *secretData, err error) {
-    var decs []*database.SecretFinding
-    decs, err = r.db.GetSecretFindingsBySecret(secret)
-    if err != nil {
-        return
-    }
-
+func (r *Reporter) buildSecretData(secret *database.Secret, sfs []*database.SecretFinding) (result *secretData, err error) {
     var findings []findingData
-    for _, dec := range decs {
+    for _, dec := range sfs {
         var findingData findingData
         findingData, err = r.buildFindingData(dec)
         if err != nil {

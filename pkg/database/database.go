@@ -56,6 +56,10 @@ func (d *Database) read(collection, resource string, v interface{}) (err error) 
     return d.driver.Read(collection, resource, v)
 }
 
+func (d *Database) delete(collection, resource string) error {
+    return d.driver.Delete(collection, resource)
+}
+
 func (d *Database) readAll(collection string) (rows []string, err error) {
     if ! d.TableExists(collection) {
         return

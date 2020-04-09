@@ -1,31 +1,50 @@
 package structures
 
-type Set map[string]struct{}
+import "sync"
+
+type Set struct {
+    data map[string]struct{}
+    lock sync.Mutex
+}
 
 func NewSet(values []string) (result Set) {
-    result = Set{}
+    var data = map[string]struct{}{}
     for _, value := range values {
-        result[value] = struct{}{}
+        data[value] = struct{}{}
     }
 
-    return result
+    result = Set{data: data}
+
+    return
 }
 
 func (s Set) Add(value string) {
-    s[value] = struct{}{}
+    s.lock.Lock()
+    defer s.lock.Unlock()
+
+    s.data[value] = struct{}{}
 }
 
 func (s Set) Contains(value string) (result bool) {
-    _, result = s[value]
+    s.lock.Lock()
+    defer s.lock.Unlock()
+
+    _, result = s.data[value]
     return
 }
 
 func (s Set) IsEmpty() (result bool) {
-    return len(s) == 0
+    s.lock.Lock()
+    defer s.lock.Unlock()
+
+    return len(s.data) == 0
 }
 
 func (s Set) Values() (result []string) {
-    for key := range s {
+    s.lock.Lock()
+    defer s.lock.Unlock()
+
+    for key := range s.data {
         result = append(result, key)
     }
     return

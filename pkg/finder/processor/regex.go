@@ -10,10 +10,9 @@ import (
 type RegexProcessor struct {
     re           *regexp.Regexp
     whitelistRes *structures.RegexpSet
-    log          *logrus.Logger
 }
 
-func NewRegexProcessor(reString string, whitelistRes *structures.RegexpSet, log *logrus.Logger) (result *RegexProcessor, err error) {
+func NewRegexProcessor(reString string, whitelistRes *structures.RegexpSet) (result *RegexProcessor, err error) {
     var re *regexp.Regexp
     re, err = regexp.Compile(reString)
     if err != nil {
@@ -23,17 +22,16 @@ func NewRegexProcessor(reString string, whitelistRes *structures.RegexpSet, log 
     result = &RegexProcessor{
         re:           re,
         whitelistRes: whitelistRes,
-        log: log,
     }
 
     return
 }
 
-func (p *RegexProcessor) FindInFileChange(*rule.FileChangeContext) (result []*rule.FileChangeFinding, err error) {
+func (p *RegexProcessor) FindInFileChange(*rule.FileChangeContext, *logrus.Entry) (result []*rule.FileChangeFinding, err error) {
     return
 }
 
-func (p *RegexProcessor) FindInLine(line string) (result []*rule.LineFinding, err error) {
+func (p *RegexProcessor) FindInLine(line string, log *logrus.Entry) (result []*rule.LineFinding, err error) {
     indexPairs := p.re.FindAllStringIndex(line, 1)
 
     for _, pair := range indexPairs {
@@ -45,8 +43,8 @@ func (p *RegexProcessor) FindInLine(line string) (result []*rule.LineFinding, er
         }
 
         result = append(result, &rule.LineFinding{
-            LineRange:        lineRange,
-            SecretValues:     []string{secret},
+            LineRange:    lineRange,
+            SecretValues: []string{secret},
         })
     }
 

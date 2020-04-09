@@ -16,7 +16,7 @@ type (
     Diff struct {
         Line        *Line
         lineStrings []string
-        lineMap map[int]int
+        lineMap     map[int]int
     }
     lineMatch func(line *Line) bool
 )
@@ -35,7 +35,7 @@ func NewFromChunks(chunks []gitdiff.Chunk) (result *Diff, err error) {
 
     diff := &Diff{
         lineStrings: lineStrings,
-        lineMap: lineMap,
+        lineMap:     lineMap,
     }
 
     if ok := diff.SetLine(1); !ok {

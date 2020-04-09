@@ -5,7 +5,8 @@ log-level: debug
 source:
   provider: github
   organization: pantheon-systems
-  repos: ['infrastructure', 'titan-mt']
+  # repos: ['titan-mt', 'infrastructure'] # Uncomment to only search certain repos
+  exclude-repos: ['drupal', 'Wordpress']
   token: # Set this using the `--source.token=TOKENVALUE` command parameter
 
 #earliest-commit: f45188308b6c4877941e83ed0214f85e54be4324
@@ -17,9 +18,19 @@ whitelist-secret-dir: ./whitelist
 
 # Whitelist files that match any
 whitelist-path-match:
-  - '_tests?\..{3,4}$'
-  - '\/tests?\/'
+  # By extension
+  - '\.(?:eps|eot|jpe?g|png1?|ico|svg|gif|psd|tar|tar\.gz|tgz|zip|rar|woff2?|ttf|p12|mp4|mp3|hpi|sqlite3?|pyc|db|tf|
+  DS_Store|lock|min\.js|slim\.js|js\.map|egg|otf|phar|sketch|pdf|crdownload)$'
+
+  # Tests
+  - '_[Tt]ests?\..{3,4}$'
+  - '\/[Tt]ests?\/'
+  - '^[Tt]ests?\/'
   - '\/spec\/'
+  - '^spec\/'
+
+  # Misc
+  - '^LICENCE$'
 
 # Rules
 rules:
@@ -38,21 +49,13 @@ rules:
     whitelist-code-match:
       # Check cookbook definition, git ref
       - ':ref => ''([^'']+)'''
+      - '(github" data-branch="[0-9a-z]{41}")'
   - name: google-oauth
     processor: regex
     regex: '("client_secret":"[a-zA-Z0-9-_]{24}")'
-  - name: aws-api-key
-    processor: regex
-    regex: 'AKIA[0-9A-Z]{16}'
   - name: heroku-api-key
     processor: regex
     regex: '[h|H][e|E][r|R][o|O][k|K][u|U].*[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}'
-  - name: generic-secret
-    processor: regex
-    regex: '[s|S][e|E][c|C][r|R][e|E][t|T].*[''|"][0-9a-zA-Z]{32,45}[''|"]'
-  - name: generic-api-key
-    processor: regex
-    regex: '[a|A][p|P][i|I][_]?[k|K][e|E][y|Y].*[''|"][0-9a-zA-Z]{32,45}[''|"]'
   - name: slack-webhook
     processor: regex
     regex: 'https://hooks.slack.com/services/T[a-zA-Z0-9_]{8}/B[a-zA-Z0-9_]{8}/[a-zA-Z0-9_]{24}'
@@ -66,8 +69,12 @@ rules:
     processor: regex
     regex: '[a-zA-Z]{3,10}://[^/\s:@]{3,20}:[^/\s:@]{3,20}@[^''"\s]+'
     whitelist-code-match:
+      # Curly braces like https://username:{pass}@host.com
       - '://[^/\s:@]{3,20}:\{[^/\s:@]{1,20}\}@'
+
+      # Dollar variable like https://username:$db_pass@host.com
       - '://[^/\s:@]{3,20}:\$db_pass@'
+
       - '://user:pass@'
       - '://myuser:EXTRA_S3CUR3_PASS@'
       - '://user:password@'
@@ -76,13 +83,25 @@ rules:
       - '://bob:loblaw@'
       - '://test:secret@'
       - '://<strong>Me:Secret@'
+      - '://proxy_user:proxy_pass@'
+      - '://\[user:pass@\]'
+  - name: generic-secret
+    processor: regex
+    regex: '[s|S][e|E][c|C][r|R][e|E][t|T].*[''|"][0-9a-zA-Z]{32,45}[''|"]'
+    whitelist-code-match:
+      - '(secret_key": "klasjdflkasjdfalskdfjadfasdfasdfasdf")'
+  - name: generic-api-key
+    processor: regex
+    regex: '[a|A][p|P][i|I][_]?[k|K][e|E][y|Y].*[''|"][0-9a-zA-Z]{32,45}[''|"]'
 
   - name: rsa-private-key-pem
     processor: pem
     pem-type: RSA PRIVATE KEY
     whitelist-code-match:
-      # This format of key is invalid
+      # Incomplete/invalid/example keys
       - '-----BEGIN RSA PRIVATE KEY-----.{43}----END RSA PRIVATE KEY-----'
+      - '"-----BEGIN RSA PRIVATE KEY-----\n.{6}\.\.\."'
+      - '-----BEGIN RSA PRIVATE KEY-----,$'
   - name: openssh-private-key-pem
     processor: pem
     pem-type: OPENSSH PRIVATE KEY
@@ -100,8 +119,21 @@ rules:
       length-threshold: 20
       entropy-threshold: 4.5
     whitelist-code-match:
-      # Skip SSH public keys
       - '\bssh-rsa AAAA[0-9A-Za-z+/]+[=]{0,3}\b'
+      - 'https://github\.(com/repos/[^/]+/[^/]+/commit/[^/"\)]+)'
+      - 'https://github\.(com/[^/]+/[^/]+/commit/[^/"\)]+)'
+      - 'https://api\.github\.(com/repos/[^/]+/[^/]+/zipball/[^/"]+)'
+      - 'https://api\.github\.(com/repos/[^/]+/[^/]+/zipball/[^/"]+)'
+      - 'https://[^\.]+\.atlassian\.(net/wiki/display/[^/]+/[A-Za-z0-9\+]+)'
+      - '(0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz)'
+      - '(abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ)'
+      - '(abcdefghijklmnopqrstuvwxyz0123456789)'
+      - '(ABCDEFGHIJKLMNOPQRSTUVWXYZ)'
+      - '(abcdefghijklmnopqrstuvwxyz)'
+      - 'ComposerStaticInit([^:\(]+)'
+      - '(validEmptyBlockContainers=CKEDITOR)'
+      - '''form_action_[^_]+_[^_]+_([^'']+)'''
+      - '(com/g/[^/]+/[^/]+/badges/quality)'
 
   - name: entropy-hex
     processor: entropy
@@ -112,3 +144,4 @@ rules:
     whitelist-code-match:
       # Commit hash in requirements.txt
       - '-e git\+https://[^\s\/]+/[^\s\/]+/[^\s\/]+\.git@'
+      - 'git_ref\] = ''([^'']+)'''

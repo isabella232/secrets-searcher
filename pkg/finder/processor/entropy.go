@@ -21,21 +21,19 @@ type EntropyProcessor struct {
     EntropyThreshold float64
     skipPEMs         bool
     whitelistRes     *structures.RegexpSet
-    log              *logrus.Logger
 }
 
-func NewEntropyProcessor(charset string, lengthThreshold int, entropyThreshold float64, whitelistRes *structures.RegexpSet, skipPEMs bool, log *logrus.Logger) (result *EntropyProcessor) {
+func NewEntropyProcessor(charset string, lengthThreshold int, entropyThreshold float64, whitelistRes *structures.RegexpSet, skipPEMs bool) (result *EntropyProcessor) {
     return &EntropyProcessor{
         Charset:          charset,
         LengthThreshold:  lengthThreshold,
         EntropyThreshold: entropyThreshold,
         skipPEMs:         skipPEMs,
         whitelistRes:     whitelistRes,
-        log:              log,
     }
 }
 
-func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext) (result []*rule.FileChangeFinding, err error) {
+func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext, log *logrus.Entry) (result []*rule.FileChangeFinding, err error) {
     var diff *diffpkg.Diff
     diff, err = context.Diff()
     if err != nil {
@@ -60,13 +58,6 @@ func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext) (re
                     break
                 }
             }
-        }
-
-        if p.whitelistRes.MatchStringAny(diff.Line.Code, "") {
-            if ok := diff.Increment(); !ok {
-                break
-            }
-            continue
         }
 
         if ok := diff.UntilTrueIncrement(func(line *diffpkg.Line) bool { return diff.Line.IsAdd }); !ok {
@@ -110,6 +101,6 @@ func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext) (re
     return
 }
 
-func (p *EntropyProcessor) FindInLine(string) (result []*rule.LineFinding, err error) {
+func (p *EntropyProcessor) FindInLine(string, *logrus.Entry) (result []*rule.LineFinding, err error) {
     return
 }

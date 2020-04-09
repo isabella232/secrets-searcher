@@ -7,6 +7,7 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "gopkg.in/src-d/go-git.v4"
+    gittransport "gopkg.in/src-d/go-git.v4/plumbing/transport"
     "os"
     "path/filepath"
 )
@@ -87,6 +88,15 @@ func (c *Code) cloneRepos() (err error) {
         newLog := c.log.WithField("repo", repo.Name)
         err = c.cloneRepo(repo, newLog)
         if err != nil {
+
+            // Empty repos should not crash the execution
+            if err == gittransport.ErrEmptyRemoteRepository {
+                if err = c.db.DeleteRepo(repo.ID); err != nil {
+                    newLog.Warn("repo is empty, skipped search")
+                }
+                continue
+            }
+
             return errors.WithMessage(err, "unable to clone repo")
         }
     }
@@ -105,8 +115,14 @@ func (c *Code) cloneRepo(repo *database.Repo, log *logrus.Entry) (err error) {
 
     // Clone
     log.Debug("cloning repo")
-    co := &git.CloneOptions{URL: repo.SSHURL, Progress: os.Stdout}
+    co := &git.CloneOptions{URL: repo.SSHURL}
     if _, err = git.PlainClone(cloneDir, false, co); err != nil {
+
+        // Empty repos should not crash the execution
+        if err == gittransport.ErrEmptyRemoteRepository {
+            return
+        }
+
         err = errors.Wrapv(err, "unable to clone repo", repo.SSHURL, cloneDir)
         return
     }

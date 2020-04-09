@@ -1,13 +1,14 @@
 package app
 
 import (
+    "github.com/hako/durafmt"
     codepkg "github.com/pantheon-systems/search-secrets/pkg/code"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     finderpkg "github.com/pantheon-systems/search-secrets/pkg/finder"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/comb"
     "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
     "github.com/pantheon-systems/search-secrets/pkg/github"
+    "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     reporterpkg "github.com/pantheon-systems/search-secrets/pkg/reporter"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
@@ -18,17 +19,20 @@ import (
 )
 
 type App struct {
+    SecretCount    int
     code           *codepkg.Code
     finder         *finderpkg.Finder
     reporter       *reporterpkg.Reporter
     skipSourcePrep bool
     reportDir      string
-    codeDir      string
+    codeDir        string
+    startTime      time.Time
     db             *database.Database
     log            *logrus.Logger
 }
 
-func New(skipSourcePrep bool, githubToken, organization, outputDir string, repos, refs []string, rules []*rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, log *logrus.Logger) (search *App, err error) {
+func New(skipSourcePrep bool, githubToken, organization, outputDir string, repos, excludeRepos, refs []string, rules []rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, logWriter *logwriter.LogWriter, log *logrus.Logger) (search *App, err error) {
+    startTime := time.Now()
 
     // Directories
     var outputDirAbs string
@@ -50,7 +54,7 @@ func New(skipSourcePrep bool, githubToken, organization, outputDir string, repos
     }
 
     // Create filters
-    repoFilter := structures.NewFilter(repos)
+    repoFilter := structures.NewFilter(repos, excludeRepos)
     refFilter := buildRefFilter(refs)
 
     // Create Github API
@@ -59,11 +63,8 @@ func New(skipSourcePrep bool, githubToken, organization, outputDir string, repos
     // Create code
     code := codepkg.New(githubAPI, organization, codeDir, repoFilter, db, log)
 
-    // Create driver
-    driver := comb.New(log)
-
     // Create finder
-    finder := finderpkg.New(driver, code, repoFilter, refFilter, rules, earliestTime, latestTime, earliestCommit, latestCommit, whitelistPath, whitelistSecretIDSet, db, log)
+    finder := finderpkg.New(code, repoFilter, refFilter, rules, earliestTime, latestTime, earliestCommit, latestCommit, whitelistPath, whitelistSecretIDSet, db, logWriter, log)
 
     // Create reporter
     reporter := reporterpkg.New(reportDir, db, log)
@@ -73,8 +74,9 @@ func New(skipSourcePrep bool, githubToken, organization, outputDir string, repos
         finder:         finder,
         reporter:       reporter,
         skipSourcePrep: skipSourcePrep,
-        reportDir: reportDir,
-        codeDir: codeDir,
+        reportDir:      reportDir,
+        codeDir:        codeDir,
+        startTime:      startTime,
         db:             db,
         log:            log,
     }
@@ -98,15 +100,19 @@ func (a *App) Execute() (err error) {
         }
     }
 
-    a.log.Info("preparing findings ... ")
-    if err = a.finder.PrepareFindings(); err != nil {
+    a.log.Info("finding secrets ... ")
+    a.SecretCount, err = a.finder.Search()
+    if err != nil {
         return errors.WithMessage(err, "unable to prepare findings")
     }
 
-    a.log.Info("preparing report ... ")
+    a.log.Info("creating report ... ")
     if err = a.reporter.PrepareReport(); err != nil {
         return errors.WithMessage(err, "unable to prepare report")
     }
+
+    duration := durafmt.ParseShort(time.Now().Sub(a.startTime))
+    a.log.Infof("command completed successfully (%s), view report at %s", duration, a.reportDir)
 
     return
 }
@@ -139,5 +145,5 @@ func buildRefFilter(refs []string) (result *structures.Filter) {
         }
         values = append(values, ref)
     }
-    return structures.NewFilter(values)
+    return structures.NewFilter(values, nil)
 }
