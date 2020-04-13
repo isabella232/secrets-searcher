@@ -13,7 +13,6 @@ Build and run this way:
 cd ~/go/src/github.com/pantheon-systems
 git clone git@github.com:pantheon-systems/search-secrets.git
 cd search-secrets
-git checkout mattalexander-review
 make
 cd _pantheon
 ../search-secrets --config="config.yaml" --log-level="debug" --source.api-token="$GITHUB_TOKEN"
