@@ -400,8 +400,6 @@ func validateParameters() {
         case processor_type.Entropy{}.New().Value():
             entConfNameBase := configNameBase + "entropy."
             validationAssertTrue(ruleConf.EntropyConfig.Charset != "", entConfNameBase+"charset", "")
-            validationAssertTrue(ruleConf.EntropyConfig.Charset != "", entConfNameBase+"length-threshold", "")
-            validationAssertTrue(ruleConf.EntropyConfig.Charset != "", entConfNameBase+"entropy-threshold", "")
         }
     }
 }
