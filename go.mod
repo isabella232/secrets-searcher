@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/elliotchance/orderedmap v1.2.1
+	github.com/gdm85/go-genums v0.0.0-20150918101623-e75333c01060 // indirect
 	github.com/google/go-github/v29 v29.0.3
 	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/gosuri/uiprogress v0.0.1
@@ -21,6 +22,7 @@ require (
 	github.com/spf13/viper v1.6.2
 	github.com/stretchr/testify v1.5.1
 	github.com/vbauerster/mpb/v5 v5.0.3
+	github.com/wlbr/templify v0.0.0-20190823200653-c12e62ca00c1 // indirect
 	github.com/zenthangplus/goccm v0.0.0-20190816165301-2cd484a408a7
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d

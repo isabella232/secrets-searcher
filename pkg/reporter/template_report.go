@@ -193,7 +193,7 @@ func template_reportTemplate() string {
 		"                                </tr>\n" +
 		"                                {{if $devEnabled}}\n" +
 		"                                    <tr>\n" +
-		"                                        <th scope=\"row\">Code</th>\n" +
+		"                                        <th scope=\"row\">Dev code</th>\n" +
 		"                                        <td>\n" +
 		"                                        <pre><code>Repo = \"infrastructure\"\n" +
 		"Commit = \"{{$finding.CommitHash}}\"\n" +

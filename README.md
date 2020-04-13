@@ -2,23 +2,20 @@
 
 Search for sensitive information stored in one or more git repositories.
 
-## Install
-
-To build, run:
-
-```shell script
-make
-```
-
-## Pantheon usage
+## Pantheon install and usage
 
 Obtain a GitHub token with `repo` access to the repositories you want to scan. To generate a new token, log into
 GitHub, then go to "Settings > Developer settings > Personal access tokens > Generate new token".
 
-Run this way:
+Build and run this way:
 
 ```shell script
-cd pantheon
+cd ~/go/src/github.com/pantheon-systems
+git clone git@github.com:pantheon-systems/search-secrets.git
+cd search-secrets
+git checkout mattalexander-review
+make
+cd _pantheon
 ../search-secrets --config="config.yaml" --log-level="debug" --source.api-token="$GITHUB_TOKEN"
 ```
 
@@ -68,3 +65,12 @@ but doesn't pack the metadata that the YAML file does.
 Note: Whitelisting secrets individually should only be used for actually sensitive data, valid from a business
 standpoint, that have been evaluated and deemed safe. See "Whitelisting secrets" section above.
 
+```
+cd ~/go/src/github.com/pantheon-systems
+git clone git@github.com:pantheon-systems/search-secrets.git
+cd search-secrets
+git checkout mattalexander-review
+make
+cd _pantheon
+../search-secrets --config="config.yaml" --log-level="debug" --source.api-token="$GITHUB_TOKEN"
+```

@@ -2,10 +2,10 @@ APP=search-secrets
 
 GOCMD=go
 GOGENERATE=$(GOCMD) generate
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
+GOBUILD=GO111MODULE=on $(GOCMD) build
+GOCLEAN=GO111MODULE=on $(GOCMD) clean
+GOTEST=GO111MODULE=on $(GOCMD) test
+GOGET=GO111MODULE=on $(GOCMD) get
 BINARY_NAME=$(APP)
 
 all: test build
