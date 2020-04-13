@@ -15,6 +15,11 @@ git clone git@github.com:pantheon-systems/search-secrets.git
 cd search-secrets
 make
 cd _pantheon
+
+# TEMPORARY STEPS
+mkdir output
+touch output/run.log
+
 ../search-secrets --config="config.yaml" --log-level="debug" --source.api-token="$GITHUB_TOKEN"
 ```
 
