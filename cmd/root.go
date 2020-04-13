@@ -339,7 +339,14 @@ func configureLogging() {
     // Log file
     logFilePath := filepath.Join(cfg.OutputDir, "run.log")
 
-    if _, err = os.Stat(logFilePath); err == nil {
+    if _, statErr := os.Stat(logFilePath); os.IsNotExist(statErr) {
+        var empty *os.File
+        empty, err = os.Create(logFilePath)
+        if err != nil {
+            errors.Fatal(log, errors.Wrapv(err, "unable to create log file", logFilePath))
+        }
+        empty.Close()
+    } else if statErr == nil {
         if err = os.Truncate(logFilePath, 0); err != nil {
             errors.Fatal(log, errors.Wrapv(err, "unable to truncate log file", logFilePath))
         }
