@@ -13,33 +13,41 @@ import (
 type (
     PEMProcessor struct {
         pemType            string
-        oneLineJSONPattern *regexp.Regexp
         header             string
         footer             string
-        whitelistRes       *structures.RegexpSet
+        oneLineJSONPattern *regexp.Regexp
+        whitelistCodeRes   structures.RegexpSet
     }
 )
 
-func NewPEMProcessor(pemType string, whitelistRes *structures.RegexpSet) (result *PEMProcessor) {
-    oneLineJSONPattern := regexp.MustCompile(`: *\"-----BEGIN ` + pemType + `-----\\n(.*)\\n-----END ` + pemType + `-----\\n\",?$`)
+func NewPEMProcessor(pemType string) (result *PEMProcessor) {
     header := fmt.Sprintf("-----BEGIN %s-----", pemType)
     footer := fmt.Sprintf("-----END %s-----", pemType)
+    oneLineJSONPattern := regexp.MustCompile(`: *\"-----BEGIN ` + header + `-----\\n(.*)\\n` + footer + `\\n\",?$`)
+    whitelistCodeRes := structures.NewRegexpSetFromStringsMustCompile([]string{
+        // Incomplete/invalid/example keys
+        // FIXME: These are too specific to Pantheon findings and should/can be generalized
+        header + `.{43}` + footer + ``,
+        `"` + header + `\n.{6}\.\.\."`,
+        header + `,$`,
+        `with ` + header,
+    })
 
     return &PEMProcessor{
         pemType:            pemType,
-        oneLineJSONPattern: oneLineJSONPattern,
         header:             header,
         footer:             footer,
-        whitelistRes:       whitelistRes,
+        oneLineJSONPattern: oneLineJSONPattern,
+        whitelistCodeRes:   whitelistCodeRes,
     }
 }
 
-func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *logrus.Entry) (result []*rule.FileChangeFinding, err error) {
+func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
 
     // Quick out
     var patchString string
     patchString, err = context.PatchString()
-    if ! strings.Contains(patchString, p.header) {
+    if !strings.Contains(patchString, p.header) {
         return
     }
 
@@ -102,7 +110,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                         StartDiffLineNum: startDiffNum,
                         EndDiffLineNum:   diff.Line.LineNumDiff + 1,
                     },
-                    SecretValues: []string{secret},
+                    Secrets: []*rule.Secret{{Value: secret}},
                 })
 
                 if !areMoreLines {
@@ -141,19 +149,17 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                 keyLines = []string{}
                 areMoreLines := diff.WhileTrueCollectCode(func(line *diffpkg.Line) bool { return line.IsAdd }, &keyLines)
                 secret := p.buildKeyFromLines(keyLines)
-                if ! p.whitelistRes.MatchStringAny(diff.Line.Code, secret) {
-                    result = append(result, &rule.FileChangeFinding{
-                        FileRange: &structures.FileRange{
-                            StartLineNum:     startLineNum,
-                            StartIndex:       0,
-                            EndLineNum:       diff.Line.LineNumFile + 1,
-                            EndIndex:         0,
-                            StartDiffLineNum: startDiffNum,
-                            EndDiffLineNum:   diff.Line.LineNumDiff + 1,
-                        },
-                        SecretValues: []string{secret},
-                    })
-                }
+                result = append(result, &rule.FileChangeFinding{
+                    FileRange: &structures.FileRange{
+                        StartLineNum:     startLineNum,
+                        StartIndex:       0,
+                        EndLineNum:       diff.Line.LineNumFile + 1,
+                        EndIndex:         0,
+                        StartDiffLineNum: startDiffNum,
+                        EndDiffLineNum:   diff.Line.LineNumDiff + 1,
+                    },
+                    Secrets: []*rule.Secret{{Value: secret}},
+                })
 
                 if !areMoreLines {
                     break
@@ -176,27 +182,18 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
             keyString := strings.ReplaceAll(matches[1], "\\n", "\n")
             secret := p.buildKey(keyString)
 
-            if ! p.whitelistRes.MatchStringAny(diff.Line.Code, secret) {
-                result = []*rule.FileChangeFinding{{
-                    FileRange: &structures.FileRange{
-                        StartLineNum: diff.Line.LineNumFile,
-                        StartIndex:   0,
-                        EndLineNum:   diff.Line.LineNumFile,
-                        EndIndex:     len(diff.Line.Code) - 1,
-                        StartDiffLineNum: diff.Line.LineNumDiff,
-                        EndDiffLineNum:   diff.Line.LineNumDiff,
-                    },
-                    SecretValues: []string{secret},
-                }}
-            }
+            result = []*rule.FileChangeFinding{{
+                FileRange: &structures.FileRange{
+                    StartLineNum:     diff.Line.LineNumFile,
+                    StartIndex:       0,
+                    EndLineNum:       diff.Line.LineNumFile,
+                    EndIndex:         len(diff.Line.Code) - 1,
+                    StartDiffLineNum: diff.Line.LineNumDiff,
+                    EndDiffLineNum:   diff.Line.LineNumDiff,
+                },
+                Secrets: []*rule.Secret{{Value: secret}},
+            }}
 
-            if ok := diff.Increment(); !ok {
-                break
-            }
-            continue
-        }
-
-        if p.whitelistRes.MatchStringAny(diff.Line.Code, "") {
             if ok := diff.Increment(); !ok {
                 break
             }
@@ -213,7 +210,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
     return
 }
 
-func (p *PEMProcessor) FindInLine(string, *logrus.Entry) (result []*rule.LineFinding, err error) {
+func (p *PEMProcessor) FindInLine(string, *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
     return
 }
 

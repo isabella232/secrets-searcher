@@ -13,11 +13,11 @@ func NewFilter(included, exclude []string) *Filter {
 }
 
 func (i *Filter) IsEnabled() bool {
-    return ! i.included.IsEmpty()
+    return !i.included.IsEmpty()
 }
 
 func (i *Filter) IsIncluded(value string) bool {
-    return i.included.IsEmpty() || (i.included.Contains(value) && ! i.excluded.Contains(value))
+    return !i.excluded.Contains(value) && (i.included.IsEmpty() || i.included.Contains(value))
 }
 
 func (i *Filter) Values() []string {

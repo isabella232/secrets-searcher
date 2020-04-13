@@ -15,22 +15,66 @@ const (
     hexCharset    = "1234567890abcdefABCDEF"
 )
 
-func FindHighEntropyWords(unputString, charsetName string, lengthThreshold int, entropyThreshold float64) (result []structures.LineRange) {
+func HasHighEntropy(inputString, charsetName string, entropyThreshold float64) (result bool, err error) {
+    var charsetChars string
+    charsetChars, err = getCharsetChars(charsetName)
+    if err != nil {
+        return
+    }
+
+    if !isStringOfCharset(inputString, charsetChars) {
+        result = false
+        return
+    }
+
+    entropy := entropy(inputString, charsetChars)
+    result = entropy >= entropyThreshold
+
+    return
+}
+
+func FindHighEntropyWords(inputString, charsetName string, lengthThreshold int, entropyThreshold float64) (result []*structures.LineRangeValue, err error) {
     charsetChars, err := getCharsetChars(charsetName)
     if err != nil {
         return
     }
 
-    indexRanges := findLongStringsOfCharset(unputString, charsetChars, lengthThreshold)
+    indexRanges := findLongStringsOfCharset(inputString, charsetChars, lengthThreshold)
     for _, inRange := range indexRanges {
-        word := inRange.GetStringFrom(unputString)
-        entropy := entropy(word, charsetChars)
+        rangeValue := inRange.ExtractValue(inputString)
+        entropy := entropy(rangeValue.Value, charsetChars)
         if entropy >= entropyThreshold {
-            result = append(result, inRange)
+            result = append(result, rangeValue)
         }
     }
 
     return
+}
+
+func entropy(input, charsetChars string) (result float64) {
+    if input == "" {
+        return 0
+    }
+    inputLen := len(input)
+    for _, charsetChar := range charsetChars {
+        px := float64(strings.Count(input, string(charsetChar))) / float64(inputLen)
+        if px > 0 {
+            result += -px * math.Log2(px)
+        }
+    }
+
+    return
+}
+
+func isStringOfCharset(input, charsetChars string) (result bool) {
+    for _, char := range input {
+        charString := string(char)
+        if !strings.Contains(charsetChars, charString) {
+            return false
+        }
+    }
+
+    return true
 }
 
 func findLongStringsOfCharset(input, charsetChars string, threshold int) (result []structures.LineRange) {
@@ -54,21 +98,6 @@ func findLongStringsOfCharset(input, charsetChars string, threshold int) (result
 
     if currentIndex-startIndex >= threshold {
         result = append(result, structures.LineRange{StartIndex: startIndex, EndIndex: currentIndex + 1})
-    }
-
-    return
-}
-
-func entropy(input, charsetChars string) (result float64) {
-    if input == "" {
-        return 0
-    }
-    inputLen := len(input)
-    for _, charsetChar := range charsetChars {
-        px := float64(strings.Count(input, string(charsetChar))) / float64(inputLen)
-        if px > 0 {
-            result += -px * math.Log2(px)
-        }
     }
 
     return

@@ -11,16 +11,20 @@ type (
         Processor Processor
     }
     Processor interface {
-        FindInFileChange(context *FileChangeContext, log *logrus.Entry) (result []*FileChangeFinding, err error)
-        FindInLine(line string, log *logrus.Entry) (result []*LineFinding, err error)
+        FindInFileChange(context *FileChangeContext, log *logrus.Entry) (result []*FileChangeFinding, ignore []*structures.FileRange, err error)
+        FindInLine(line string, log *logrus.Entry) (result []*LineFinding, ignore []*structures.LineRange, err error)
     }
     FileChangeFinding struct {
-        FileRange    *structures.FileRange
-        SecretValues []string
+        FileRange *structures.FileRange
+        Secrets   []*Secret
     }
     LineFinding struct {
-        LineRange    *structures.LineRange
-        SecretValues []string
+        LineRange *structures.LineRange
+        Secrets   []*Secret
+    }
+    Secret struct {
+        Value   string
+        Decoded string
     }
 )
 

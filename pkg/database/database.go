@@ -50,10 +50,29 @@ func (d *Database) write(collection, resource string, v interface{}) error {
 }
 
 func (d *Database) read(collection, resource string, v interface{}) (err error) {
-    if ! d.TableExists(collection) {
+    if !d.TableExists(collection) {
         return
     }
     return d.driver.Read(collection, resource, v)
+}
+
+func (d *Database) exists(collection, resource string) (result bool, err error) {
+    if !d.TableExists(collection) {
+        return
+    }
+
+    if readErr := d.driver.Read(collection, resource, nil); readErr != nil {
+        if os.IsNotExist(readErr) {
+            return
+        }
+
+        err = readErr
+        return
+    }
+
+    result = true
+
+    return
 }
 
 func (d *Database) delete(collection, resource string) error {
@@ -61,7 +80,7 @@ func (d *Database) delete(collection, resource string) error {
 }
 
 func (d *Database) readAll(collection string) (rows []string, err error) {
-    if ! d.TableExists(collection) {
+    if !d.TableExists(collection) {
         return
     }
     return d.driver.ReadAll(collection)

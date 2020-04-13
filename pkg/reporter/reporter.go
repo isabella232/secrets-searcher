@@ -1,9 +1,10 @@
 package reporter
 
-//go:generate templify -p reporter -o report_template.go source/report.gohtml
+//go:generate templify -p reporter -o template_report.go source/report.gohtml
 
 import (
     "fmt"
+    "github.com/otiai10/copy"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/sirupsen/logrus"
@@ -11,57 +12,39 @@ import (
     "html/template"
     "io/ioutil"
     "os"
-    "path"
     "path/filepath"
-    "time"
+    "strings"
 )
 
-type (
-    Reporter struct {
-        dir            string
-        secretsDir     string
-        reportFilePath string
-        db             *database.Database
-        log            *logrus.Logger
-    }
-    reportData struct {
-        ReportDate time.Time
-        Secrets    []secretData
-    }
-    secretData struct {
-        ID       string        `yaml:"secret-id"`
-        Value    string        `yaml:"value"`
-        Findings []findingData `yaml:"findings"`
-    }
-    findingData struct {
-        ID                  string    `yaml:"finding-id"`
-        RuleName            string    `yaml:"rule"`
-        RepoFullLink        linkData  `yaml:"repo"`
-        CommitHashLink      linkData  `yaml:"commit"`
-        CommitHashLinkShort linkData  `yaml:"-"`
-        CommitDate          time.Time `yaml:"commit-date"`
-        CommitAuthorEmail   string    `yaml:"-"`
-        CommitAuthorFull    string    `yaml:"commit-author"`
-        FileLineLink        linkData  `yaml:"file-location"`
-        FileLineLinkShort   linkData  `yaml:"-"`
-        CodeShort           string    `yaml:"-"`
-        Code                string    `yaml:"code"`
-        Diff                string    `yaml:"diff"`
-    }
-    linkData struct {
-        Label   string `yaml:"label"`
-        URL     string `yaml:"url"`
-        Tooltip string `yaml:"tooltip"`
+var (
+    templateFuncs = template.FuncMap{
+        "stringRepeat": func(width int, str string) template.HTML {
+            return template.HTML(strings.Repeat(str, width))
+        },
     }
 )
 
-func New(dir string, db *database.Database, log *logrus.Logger) *Reporter {
+type Reporter struct {
+    dir               string
+    archiveDir        string
+    secretsDir        string
+    reportFilePath    string
+    skipReportSecrets bool
+    builder           *Builder
+    db                *database.Database
+    log               *logrus.Logger
+}
+
+func New(dir, archiveDir string, skipReportSecrets bool, appURL string, db *database.Database, log *logrus.Logger) *Reporter {
     return &Reporter{
-        dir:            dir,
-        secretsDir:     filepath.Join(dir, "secrets"),
-        reportFilePath: filepath.Join(dir, "report.html"),
-        db:             db,
-        log:            log,
+        dir:               dir,
+        archiveDir:        archiveDir,
+        secretsDir:        filepath.Join(dir, "secrets"),
+        reportFilePath:    filepath.Join(dir, "report.html"),
+        skipReportSecrets: skipReportSecrets,
+        builder:           NewBuilder(appURL, db, log),
+        db:                db,
+        log:               log,
     }
 }
 
@@ -73,8 +56,10 @@ func (r *Reporter) PrepareReport() (err error) {
     if err := os.MkdirAll(r.dir, 0700); err != nil {
         return errors.Wrapv(err, "unable to create report directory", r.dir)
     }
-    if err := os.MkdirAll(r.secretsDir, 0700); err != nil {
-        return errors.Wrapv(err, "unable to create secrets directory", r.secretsDir)
+    if !r.skipReportSecrets {
+        if err := os.MkdirAll(r.secretsDir, 0700); err != nil {
+            return errors.Wrapv(err, "unable to create secrets directory", r.secretsDir)
+        }
     }
 
     var reportFile *os.File
@@ -84,117 +69,34 @@ func (r *Reporter) PrepareReport() (err error) {
     }
 
     var reportData *reportData
-    reportData, err = r.buildReportData()
+    reportData, err = r.builder.buildReportData()
     if err != nil {
         return
     }
+    if reportData.Secrets != nil {
+        r.log.Infof("found %d secrets", len(reportData.Secrets))
+    } else {
+        r.log.Info("found no secrets")
+    }
 
     var tmpl *template.Template
-    tmpl = template.New("report")
-    tmpl, err = tmpl.Parse(report_templateTemplate())
+    tmpl = template.New("report").Funcs(templateFuncs)
+    tmpl, err = tmpl.Parse(template_reportTemplate())
     if err != nil {
         return err
     }
     err = tmpl.Execute(reportFile, reportData)
 
-    err = r.outputSecrets(reportData)
-    if err != nil {
-        return
-    }
-
-    return
-}
-
-func (r *Reporter) buildReportData() (result *reportData, err error) {
-    r.log.Debug("getting list of secrets ...")
-
-    var sfsBySecret map[*database.Secret][]*database.SecretFinding
-    sfsBySecret, err = r.db.GetSecretFindingsGroupedBySecret()
-    if err != nil {
-        return
-    }
-
-    var reportSecrets []secretData
-    for secret, sfs := range sfsBySecret {
-        var secretData *secretData
-        secretData, err = r.buildSecretData(secret, sfs)
+    if !r.skipReportSecrets && reportData.Secrets != nil {
+        err = r.outputSecrets(reportData)
         if err != nil {
             return
         }
-
-        reportSecrets = append(reportSecrets, *secretData)
     }
 
-    result = &reportData{
-        ReportDate: time.Now(),
-        Secrets:    reportSecrets,
-    }
-
-    return
-}
-
-func (r *Reporter) buildSecretData(secret *database.Secret, sfs []*database.SecretFinding) (result *secretData, err error) {
-    var findings []findingData
-    for _, dec := range sfs {
-        var findingData findingData
-        findingData, err = r.buildFindingData(dec)
-        if err != nil {
-            return
-        }
-
-        findings = append(findings, findingData)
-    }
-
-    result = &secretData{
-        ID:       secret.ID,
-        Value:    secret.Value,
-        Findings: findings,
-    }
-
-    return
-}
-
-func (r *Reporter) buildFindingData(dec *database.SecretFinding) (result findingData, err error) {
-    var finding *database.Finding
-    finding, err = r.db.GetFinding(dec.FindingID)
-    if err != nil {
-        return
-    }
-
-    var commit *database.Commit
-    commit, err = r.db.GetCommit(finding.CommitID)
-    if err != nil {
-        return
-    }
-
-    var repo *database.Repo
-    repo, err = r.db.GetRepo(commit.RepoID)
-    if err != nil {
-        return
-    }
-
-    commitURL := path.Join(repo.HTMLURL, "commit", commit.CommitHash)
-
-    fileLineURL := getLineURLLink(repo, commit, finding)
-    fileLineLabel := fmt.Sprintf("%s, line %d", finding.Path, finding.StartLineNum)
-    fileLineLink := linkData{Label: fileLineLabel, URL: fileLineURL}
-
-    fileLineShortLabel := fmt.Sprintf("%s, line %d", path.Base(finding.Path), finding.StartLineNum)
-    fileLineShortLink := linkData{Label: fileLineShortLabel, URL: fileLineURL, Tooltip: fileLineLabel}
-
-    result = findingData{
-        ID:                  finding.ID,
-        RuleName:            finding.Rule,
-        RepoFullLink:        linkData{Label: repo.FullName, URL: repo.HTMLURL},
-        CommitHashLink:      linkData{Label: commit.CommitHash, URL: commitURL},
-        CommitHashLinkShort: linkData{Label: commit.CommitHash[:7], URL: commitURL, Tooltip: commit.CommitHash},
-        CommitDate:          commit.Date,
-        CommitAuthorEmail:   commit.AuthorEmail,
-        CommitAuthorFull:    commit.AuthorFull,
-        FileLineLink:        fileLineLink,
-        FileLineLinkShort:   fileLineShortLink,
-        Code:                finding.Code,
-        Diff:                finding.Diff,
+    r.log.Debugf("copying %s to %s ...", r.dir, r.archiveDir)
+    if err = copy.Copy(r.dir, r.archiveDir); err != nil {
+        return errors.Wrapv(err, "", r.dir, r.archiveDir)
     }
 
     return
@@ -214,16 +116,6 @@ func (r *Reporter) outputSecrets(data *reportData) (err error) {
         if err != nil {
             return
         }
-    }
-
-    return
-}
-
-func getLineURLLink(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
-    baseURL := path.Join(repo.HTMLURL, "blob", commit.CommitHash, finding.Path)
-    result = fmt.Sprintf("%s#L%d", baseURL, finding.StartLineNum)
-    if finding.StartLineNum != finding.EndLineNum {
-        result = fmt.Sprintf("%s-%d", result, finding.EndLineNum)
     }
 
     return

@@ -2,6 +2,8 @@ package cmd
 
 import (
     "fmt"
+    "github.com/pantheon-systems/search-secrets/pkg/database/enum/source_provider"
+    "github.com/pantheon-systems/search-secrets/pkg/dev"
     "os"
     "path/filepath"
     "regexp"
@@ -24,6 +26,7 @@ import (
 
 const (
     appName    = "search-secrets"
+    appURL     = "https://github.com/pantheon-systems/search-secrets"
     dateFormat = "2006-01-02"
 )
 
@@ -47,34 +50,45 @@ type (
     config struct {
 
         // Output and workflow
-        LogLevel       string `mapstructure:"log-level"`
-        SkipSourcePrep bool   `mapstructure:"skip-source-prep"`
-        OutputDir      string `mapstructure:"output-dir"`
-        NonZero        bool   `mapstructure:"non-zero"`
+        LogLevel    string `mapstructure:"log-level"`
+        OutputDir   string `mapstructure:"output-dir"`
+        NonZero     bool   `mapstructure:"non-zero"`
+        Interactive bool   `mapstructure:"interactive"`
+        DevEnabled  bool   `mapstructure:"dev"`
 
         // Source config
-        Source sourceConfig `mapstructure:"source"`
+        SkipSourcePrep bool         `mapstructure:"skip-source-prep"`
+        Source         sourceConfig `mapstructure:"source"`
 
         // Finder config
         RuleConfigs        []ruleConfig `mapstructure:"rules"`
         Refs               []string     `mapstructure:"refs"`
         EarliestDate       time.Time    `mapstructure:"earliest-date"`
         LatestDate         time.Time    `mapstructure:"latest-date"`
-        EarliestCommit     string       `mapstructure:"earliest-commit"`
-        LatestCommit       string       `mapstructure:"latest-commit"`
         WhitelistPathMatch []string     `mapstructure:"whitelist-path-match"`
-        WhitelistSecretIDs []string     `mapstructure:"whitelist-secret-id"`
+        WhitelistSecretIDs []string     `mapstructure:"whitelist-secret-ids"`
         WhitelistSecretDir string       `mapstructure:"whitelist-secret-dir"`
+
+        // Reporting config
+        SkipReportSecrets bool `mapstructure:"skip-report-secrets"`
     }
 
     // Source config
     sourceConfig struct {
-        Provider     string   `mapstructure:"provider"`
-        APIToken     string   `mapstructure:"api-token"`
-        User         string   `mapstructure:"user"`
-        Organization string   `mapstructure:"organization"`
+        Provider string `mapstructure:"provider"`
+
+        // Common
         Repos        []string `mapstructure:"repos"`
         ExcludeRepos []string `mapstructure:"exclude-repos"`
+
+        // Local
+        LocalDir string `mapstructure:"dir"`
+
+        // GitHub
+        APIToken     string `mapstructure:"api-token"`
+        User         string `mapstructure:"user"`
+        Organization string `mapstructure:"organization"`
+        SkipForks    bool   `mapstructure:"exclude-forks"`
     }
 
     // Rule config
@@ -119,6 +133,12 @@ func init() {
 }
 
 func runApp(*cobra.Command, []string) {
+    dev.Enabled = cfg.DevEnabled
+    if dev.Enabled {
+        log.Warn("DEV MODE ENABLED")
+        cfg.Source.Repos = []string{dev.Repo}
+    }
+
     validateParameters()
 
     var app *apppkg.App
@@ -138,29 +158,35 @@ func runApp(*cobra.Command, []string) {
     // Build set of secrets to whitelist
     whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
     if cfg.WhitelistSecretDir != "" {
-        if err = appendSecretsFromWhitelistDir(&whitelistSecretIDSet, cfg.WhitelistSecretDir); err != nil {
+        if err = appendSecretsFromWhitelistDir(&whitelistSecretIDSet); err != nil {
             log.Fatal(errors.WithMessage(err, "unable to create app"))
         }
     }
 
-    app, err = apppkg.New(
-        cfg.SkipSourcePrep,
-        cfg.Source.APIToken,
-        cfg.Source.Organization,
-        cfg.OutputDir,
-        cfg.Source.Repos,
-        cfg.Source.ExcludeRepos,
-        cfg.Refs,
-        rules,
-        earliestTime,
-        latestTime,
-        cfg.EarliestCommit,
-        cfg.LatestCommit,
-        whitelistPath,
-        whitelistSecretIDSet,
-        logWriter,
-        log,
-    )
+    app, err = apppkg.New(&apppkg.Config{
+        SkipSourcePrep:       cfg.SkipSourcePrep,
+        Interactive:          cfg.Interactive,
+        OutputDir:            cfg.OutputDir,
+        Refs:                 cfg.Refs,
+        Rules:                rules,
+        EarliestTime:         earliestTime,
+        LatestTime:           latestTime,
+        WhitelistPath:        whitelistPath,
+        WhitelistSecretIDSet: whitelistSecretIDSet,
+        SkipReportSecrets:    cfg.SkipReportSecrets,
+        AppURL:               appURL,
+        SourceConfig: &apppkg.SourceConfig{
+            SourceProvider: cfg.Source.Provider,
+            GithubToken:    cfg.Source.APIToken,
+            Organization:   cfg.Source.Organization,
+            Repos:          cfg.Source.Repos,
+            ExcludeRepos:   cfg.Source.ExcludeRepos,
+            ExcludeForks:   cfg.Source.SkipForks,
+            LocalDir:       cfg.Source.LocalDir,
+        },
+        LogWriter: logWriter,
+        Log:       log,
+    })
 
     if err != nil {
         log.Fatal(errors.WithMessage(err, "unable to create app"))
@@ -188,7 +214,7 @@ func initArgs() {
     // Root config
     flags.String(
         "log-level",
-        logrus.DebugLevel.String(),
+        logrus.InfoLevel.String(),
         fmt.Sprintf("How detailed should the log be? Valid values: %s.", strings.Join(validLogLevels(), ", ")))
     flags.Bool(
         "skip-source-prep",
@@ -202,6 +228,14 @@ func initArgs() {
         "non-zero",
         false,
         "If set to true, the command will exit with a non-zero exit code if secrets are found.")
+    flags.Bool(
+        "interactive",
+        true,
+        "If false, progress bars will not appear, only log messages.")
+    flags.Bool(
+        "dev",
+        false,
+        "If true, certain development features are enabled.")
 
     // Source config
     flags.String(
@@ -242,6 +276,12 @@ func initArgs() {
         "whitelist-secret-dir",
         []string{},
         "If a corresponding `secret-[SECRETID].yaml` file is found in this directory, that secret will be whitelisted.")
+
+    // Report config
+    flags.Bool(
+        "skip-report-secrets",
+        false,
+        "If true, the `./output/report/secret-[SECRETID].yaml` files will not be generated.")
 }
 
 func initLogging() {
@@ -298,8 +338,11 @@ func configureLogging() {
 
     // Log file
     logFilePath := filepath.Join(cfg.OutputDir, "run.log")
-    if err = os.RemoveAll(logFilePath); err != nil {
-        errors.Fatal(log, errors.Wrapv(err, "unable to delete log file"))
+
+    if _, err = os.Stat(logFilePath); os.IsNotExist(err) {
+        if err = os.Truncate("test.txt", 0); err != nil {
+            errors.Fatal(log, errors.Wrapv(err, "unable to truncate log file"))
+        }
     }
     logWriter, err = logwriter.New(logFilePath)
     if err != nil {
@@ -315,14 +358,19 @@ func validateParameters() {
     validationAssertTrue(cfg.OutputDir != "", "output-dir", "")
 
     // `source` config
-    // FIXME Implement "local" provider and others if necessary
-    validationAssertTrue(cfg.Source.Provider == "github", "source.provider",
-        "currently only \"github\" is supported as `%s`")
-    // FIXME Implement user for GitHub provider
-    validationAssertTrue(cfg.Source.User == "", "source.user",
-        "currently, only `source.organization` is supported, `%s` is not")
-    validationAssertTrue(cfg.Source.APIToken != "", "source.api-token", "")
-    validationAssertTrue(cfg.Source.Organization != "", "source.organization", "")
+    switch cfg.Source.Provider {
+    case source_provider.GitHub{}.New().Value():
+        // TODO Implement user for GitHub provider, not just organization
+        validationAssertTrue(cfg.Source.User == "", "source.user",
+            "currently, only `source.organization` is supported, `%s` is not")
+        validationAssertTrue(cfg.Source.APIToken != "", "source.api-token", "")
+        validationAssertTrue(cfg.Source.Organization != "", "source.organization", "")
+    case source_provider.Local{}.New().Value():
+        errors.Fatal(log, errors.New("currently only \"github\" is supported as `source.provider`"))
+        validationAssertTrue(cfg.Source.LocalDir != "", "source.dir", "")
+    default:
+        errors.Fatal(log, errors.New("currently only \"github\" is supported as `source.provider`"))
+    }
 
     // `rules` config
     validationAssertTrue(len(cfg.RuleConfigs) > 0, "rules", "")
@@ -357,6 +405,7 @@ func validateParameters() {
         }
     }
 }
+
 func validationAssertTrue(valid bool, configName string, messageTemplate string) {
     if !valid {
         message := fmt.Sprintf(messageTemplate, configName)
@@ -378,29 +427,31 @@ func buildRules(ruleConfigs []ruleConfig) (result []rule.Rule, err error) {
 }
 
 func buildProcessor(ruleConf ruleConfig) (result rule.Processor, err error) {
-    var whitelistRes structures.RegexpSet
+    var whitelistCodeRes structures.RegexpSet
     if ruleConf.WhitelistCodeMatch != nil {
-        whitelistRes, err = structures.NewRegexpSetFromStrings(ruleConf.WhitelistCodeMatch)
+        whitelistCodeRes, err = structures.NewRegexpSetFromStrings(ruleConf.WhitelistCodeMatch)
         if err != nil {
             return
         }
     }
 
     switch ruleConf.Processor {
+    case processor_type.URL{}.New().Value():
+        result = processor.NewURLProcessor(&whitelistCodeRes)
     case processor_type.Regex{}.New().Value():
-        result, err = processor.NewRegexProcessor(ruleConf.RegexString, &whitelistRes)
+        result, err = processor.NewRegexProcessor(ruleConf.RegexString, &whitelistCodeRes)
     case processor_type.PEM{}.New().Value():
-        result = processor.NewPEMProcessor(ruleConf.PEMType, &whitelistRes)
+        result = processor.NewPEMProcessor(ruleConf.PEMType)
     case processor_type.Entropy{}.New().Value():
         ec := ruleConf.EntropyConfig
-        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistRes, true)
+        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
     default:
         err = errors.Errorv("unknown search type", ruleConf.Processor)
     }
     return
 }
 
-func appendSecretsFromWhitelistDir(secretIDSet *structures.Set, whitelistSecretDir string) error {
+func appendSecretsFromWhitelistDir(secretIDSet *structures.Set) error {
     return filepath.Walk(cfg.WhitelistSecretDir,
         func(filePath string, info os.FileInfo, err error) error {
             if err != nil {

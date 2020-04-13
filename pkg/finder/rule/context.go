@@ -3,13 +3,11 @@ package rule
 import (
     "bytes"
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
-    "github.com/pantheon-systems/search-secrets/pkg/structures"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/sirupsen/logrus"
     gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
     gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
-
-var dupeChecker = structures.NewSet(nil)
 
 type FileChangeContext struct {
     FileChange  *gitobject.Change
@@ -32,20 +30,21 @@ func NewFileChangeContext(repoName string, commit *gitobject.Commit, fileChange 
 }
 
 func (fcc *FileChangeContext) Patch() (result *gitobject.Patch, err error) {
-    if fcc.patch == nil {
-        // TODO Remove this when the coast is clear
-        key := fcc.repoName + "-" + fcc.commit.Hash.String() + "-" + fcc.FileChange.To.Name
-        if dupeChecker.Contains(key) {
-            fcc.log.Error("err1")
+    defer func() {
+        if recovered := recover(); recovered != nil {
+            err = errors.PanicWithMessage(recovered, "unable to retrieve patch")
         }
-        dupeChecker.Add(key)
+    }()
 
+    if fcc.patch == nil {
         fcc.patch, err = fcc.FileChange.Patch()
         if err != nil {
             return
         }
     }
+
     result = fcc.patch
+
     return
 }
 

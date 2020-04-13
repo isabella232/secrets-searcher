@@ -1,6 +1,8 @@
 package diff
 
 import (
+    "fmt"
+    "github.com/pantheon-systems/search-secrets/pkg/dev"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
     "strings"
@@ -80,6 +82,10 @@ func (d *Diff) Increment() (ok bool) {
 }
 
 func (d *Diff) SetLine(lineNumDiff int) (ok bool) {
+    if dev.Enabled && dev.DiffLine > 0 && lineNumDiff == dev.DiffLine {
+        fmt.Print("")
+    }
+
     var line *Line
     line, ok = d.buildLine(lineNumDiff)
     if !ok {
@@ -104,7 +110,7 @@ func (d *Diff) lineExists(lineNum int) bool {
 }
 
 func (d *Diff) buildLine(lineNumDiff int) (result *Line, ok bool) {
-    if ! d.lineExists(lineNumDiff) {
+    if !d.lineExists(lineNumDiff) {
         return
     }
 

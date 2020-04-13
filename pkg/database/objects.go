@@ -28,22 +28,25 @@ type (
         SecretID  string
     }
     Finding struct {
-        ID           string
-        CommitID     string
-        Rule         string
-        Path         string
-        StartLineNum int
-        StartIndex   int
-        EndLineNum   int
-        EndIndex     int
-        Code         string
-        CodePadding  int
-        Diff         string
-        DiffPadding  int
+        ID               string
+        CommitID         string
+        Rule             string
+        Path             string
+        StartLineNum     int
+        StartIndex       int
+        EndLineNum       int
+        EndIndex         int
+        StartDiffLineNum int
+        EndDiffLineNum   int
+        Code             string
+        CodePadding      int
+        Diff             string
+        DiffPadding      int
     }
     Secret struct {
-        ID    string
-        Value string
+        ID           string
+        Value        string
+        ValueDecoded string
     }
     Repo struct {
         ID       string
@@ -52,5 +55,6 @@ type (
         FullName string
         SSHURL   string
         HTMLURL  string
+        CloneDir string
     }
 )

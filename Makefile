@@ -9,6 +9,8 @@ GOGET=$(GOCMD) get
 BINARY_NAME=$(APP)
 
 all: test build
+generate:
+	$(GOGENERATE) -v . ./cmd/... ./pkg/...
 build:
 	$(GOGENERATE) -v . ./cmd/... ./pkg/...
 	$(GOBUILD) -o $(BINARY_NAME) -v

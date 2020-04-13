@@ -68,13 +68,27 @@ func WithMessagef(err error, format string, args ...interface{}) error {
 }
 
 // Log error and return logrus.Entry object
-func LogError(log *logrus.Logger, err error) *logrus.Entry {
+func ErrorLog(log *logrus.Logger, err error) *logrus.Entry {
     stacktrace := StackTraceString(err)
     return log.WithError(err).WithField("stacktrace", stacktrace)
 }
 
 // Log error and return logrus.Entry object
-func LogEntryError(log *logrus.Entry, err error) *logrus.Entry {
+func ErrorLogForEntry(log *logrus.Entry, err error) *logrus.Entry {
+    stacktrace := StackTraceString(err)
+    return log.WithError(err).WithField("stacktrace", stacktrace)
+}
+
+// Log error and return logrus.Entry object
+func PanicLogError(log *logrus.Logger, recovered interface{}) *logrus.Entry {
+    err := PanicError(recovered)
+    stacktrace := StackTraceString(err)
+    return log.WithError(err).WithField("stacktrace", stacktrace)
+}
+
+// Log error and return logrus.Entry object
+func PanicLogEntryError(log *logrus.Entry, recovered interface{}) *logrus.Entry {
+    err := PanicError(recovered)
     stacktrace := StackTraceString(err)
     return log.WithError(err).WithField("stacktrace", stacktrace)
 }
@@ -84,6 +98,26 @@ func Fatal(log *logrus.Logger, err error) {
     stacktrace := StackTraceString(err)
     log.WithField("stacktrace", stacktrace).Error(err)
     os.Exit(1)
+}
+
+func PanicWithMessage(recovered interface{}, message string) error {
+    return WithMessagef(PanicError(recovered), message)
+}
+
+func PanicError(recovered interface{}) error {
+    return Errorf(fmt.Sprintf("panic caught: %v", recovered))
+}
+
+func LogPanicAndContinue(log *logrus.Logger) {
+    if recovered := recover(); recovered != nil {
+        PanicLogError(log, recovered)
+    }
+}
+
+func LogEntryPanicAndContinue(log *logrus.Entry) {
+    if recovered := recover(); recovered != nil {
+        PanicLogEntryError(log, recovered)
+    }
 }
 
 // Get stacktrace from error object
@@ -105,9 +139,7 @@ func StackTrace(err error) errorsOrig.StackTrace {
     for err != nil {
 
         // Stacktrace on this err?
-        ster, ok := err.(interface {
-            StackTrace() errorsOrig.StackTrace
-        })
+        ster, ok := err.(interface{ StackTrace() errorsOrig.StackTrace })
         if ok {
             st = ster.StackTrace()
         }

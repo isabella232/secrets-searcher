@@ -4,6 +4,8 @@ import (
     "encoding/json"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
+    "sort"
+    "strings"
 )
 
 // Repo
@@ -31,7 +33,8 @@ func (d *Database) GetRepos() (result []*Repo, err error) {
 }
 
 func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Repo, err error) {
-    repos, err := d.GetRepos()
+    var repos []*Repo
+    repos, err = d.GetRepos()
     if err != nil {
         return
     }
@@ -41,6 +44,28 @@ func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Re
             result = append(result, repo)
         }
     }
+
+    return
+}
+
+func (d *Database) GetReposSorted() (result []*Repo, err error) {
+    result, err = d.GetRepos()
+    if err != nil {
+        return
+    }
+
+    d.sortRepos(result)
+
+    return
+}
+
+func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result []*Repo, err error) {
+    result, err = d.GetReposFiltered(repoFilter)
+    if err != nil {
+        return
+    }
+
+    d.sortRepos(result)
 
     return
 }
@@ -72,6 +97,12 @@ func (d *Database) DeleteRepo(id string) (err error) {
     return
 }
 
+func (d *Database) sortRepos(objs []*Repo) {
+    sort.Slice(objs, func(i, j int) bool {
+        return strings.ToLower(objs[i].Name) < strings.ToLower(objs[j].Name)
+    })
+}
+
 // Commit
 
 func (d *Database) GetCommit(id string) (result *Commit, err error) {
@@ -97,8 +128,17 @@ func (d *Database) GetCommits() (result []*Commit, err error) {
     return
 }
 
-func (d *Database) WriteCommit(obj *Commit) (err error) {
-    err = d.write(CommitTable, obj.ID, obj)
+func (d *Database) WriteCommitIfNotExists(obj *Commit) (err error) {
+    var exists bool
+    exists, err = d.exists(CommitTable, obj.ID)
+    if err != nil {
+        return
+    }
+
+    if !exists {
+        err = d.write(CommitTable, obj.ID, obj)
+    }
+
     return
 }
 
@@ -157,9 +197,24 @@ func (d *Database) GetSecrets() (result []*Secret, err error) {
     return
 }
 
+func (d *Database) GetSecretsSorted() (result []*Secret, err error) {
+    result, err = d.GetSecrets()
+    if err != nil {
+        return
+    }
+
+    d.SortSecrets(result)
+
+    return
+}
+
+func (d *Database) SortSecrets(objs []*Secret) {
+    sort.Slice(objs, func(i, j int) bool { return objs[i].ID < objs[j].ID })
+}
+
 func (d *Database) GetSecretsWithIDIndex() (result map[string]*Secret, err error) {
     var secrets []*Secret
-    secrets, err = d.GetSecrets()
+    secrets, err = d.GetSecretsSorted()
     if err != nil {
         return
     }
@@ -174,6 +229,20 @@ func (d *Database) GetSecretsWithIDIndex() (result map[string]*Secret, err error
 
 func (d *Database) WriteSecret(obj *Secret) (err error) {
     err = d.write(SecretTable, obj.ID, obj)
+    return
+}
+
+func (d *Database) WriteSecretIfNotExists(obj *Secret) (err error) {
+    var exists bool
+    exists, err = d.exists(SecretTable, obj.ID)
+    if err != nil {
+        return
+    }
+
+    if !exists {
+        err = d.write(SecretTable, obj.ID, obj)
+    }
+
     return
 }
 

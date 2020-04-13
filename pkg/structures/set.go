@@ -4,7 +4,7 @@ import "sync"
 
 type Set struct {
     data map[string]struct{}
-    lock sync.Mutex
+    lock *sync.Mutex
 }
 
 func NewSet(values []string) (result Set) {
@@ -13,7 +13,10 @@ func NewSet(values []string) (result Set) {
         data[value] = struct{}{}
     }
 
-    result = Set{data: data}
+    result = Set{
+        data: data,
+        lock: &sync.Mutex{},
+    }
 
     return
 }
@@ -47,5 +50,13 @@ func (s Set) Values() (result []string) {
     for key := range s.data {
         result = append(result, key)
     }
+    return
+}
+
+func (s Set) Len() (result int) {
+    s.lock.Lock()
+    defer s.lock.Unlock()
+
+    result = len(s.data)
     return
 }

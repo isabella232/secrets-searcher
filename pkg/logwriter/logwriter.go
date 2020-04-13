@@ -3,12 +3,14 @@ package logwriter
 import (
     "io"
     "os"
+    "sync"
 )
 
 type LogWriter struct {
     writer      io.Writer
     logFile     *os.File
     extraWriter io.Writer
+    mutex       *sync.Mutex
 }
 
 func New(logFilePath string) (result *LogWriter, err error) {
@@ -20,6 +22,7 @@ func New(logFilePath string) (result *LogWriter, err error) {
 
     result = &LogWriter{
         logFile: logFile,
+        mutex:   &sync.Mutex{},
     }
 
     result.Reset()
@@ -36,5 +39,8 @@ func (l *LogWriter) DisableStdout() {
 }
 
 func (l *LogWriter) Write(p []byte) (n int, err error) {
+    l.mutex.Lock()
+    defer l.mutex.Unlock()
+
     return l.writer.Write(p)
 }
