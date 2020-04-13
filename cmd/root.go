@@ -340,7 +340,7 @@ func configureLogging() {
     logFilePath := filepath.Join(cfg.OutputDir, "run.log")
 
     if _, err = os.Stat(logFilePath); os.IsNotExist(err) {
-        if err = os.Truncate("test.txt", 0); err != nil {
+        if err = os.Truncate(logFilePath, 0); err != nil {
             errors.Fatal(log, errors.Wrapv(err, "unable to truncate log file"))
         }
     }
