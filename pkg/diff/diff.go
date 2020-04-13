@@ -1,6 +1,8 @@
 package diff
 
 import (
+    "fmt"
+    "github.com/pantheon-systems/search-secrets/pkg/dev"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
     "strings"
@@ -16,7 +18,7 @@ type (
     Diff struct {
         Line        *Line
         lineStrings []string
-        lineMap map[int]int
+        lineMap     map[int]int
     }
     lineMatch func(line *Line) bool
 )
@@ -35,7 +37,7 @@ func NewFromChunks(chunks []gitdiff.Chunk) (result *Diff, err error) {
 
     diff := &Diff{
         lineStrings: lineStrings,
-        lineMap: lineMap,
+        lineMap:     lineMap,
     }
 
     if ok := diff.SetLine(1); !ok {
@@ -80,6 +82,10 @@ func (d *Diff) Increment() (ok bool) {
 }
 
 func (d *Diff) SetLine(lineNumDiff int) (ok bool) {
+    if dev.Enabled && dev.DiffLine > 0 && lineNumDiff == dev.DiffLine {
+        fmt.Print("")
+    }
+
     var line *Line
     line, ok = d.buildLine(lineNumDiff)
     if !ok {
@@ -104,7 +110,7 @@ func (d *Diff) lineExists(lineNum int) bool {
 }
 
 func (d *Diff) buildLine(lineNumDiff int) (result *Line, ok bool) {
-    if ! d.lineExists(lineNumDiff) {
+    if !d.lineExists(lineNumDiff) {
         return
     }
 

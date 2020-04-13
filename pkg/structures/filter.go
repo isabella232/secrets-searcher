@@ -1,23 +1,25 @@
 package structures
 
 type Filter struct {
-    set Set
+    included Set
+    excluded Set
 }
 
-func NewFilter(values []string) *Filter {
+func NewFilter(included, exclude []string) *Filter {
     return &Filter{
-        set: NewSet(values),
+        included: NewSet(included),
+        excluded: NewSet(exclude),
     }
 }
 
 func (i *Filter) IsEnabled() bool {
-    return ! i.set.IsEmpty()
+    return !i.included.IsEmpty()
 }
 
 func (i *Filter) IsIncluded(value string) bool {
-    return i.set.IsEmpty() || i.set.Contains(value)
+    return !i.excluded.Contains(value) && (i.included.IsEmpty() || i.included.Contains(value))
 }
 
 func (i *Filter) Values() []string {
-    return i.set.Values()
+    return i.included.Values()
 }

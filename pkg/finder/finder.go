@@ -1,47 +1,42 @@
 package finder
 
 import (
-    "github.com/pantheon-systems/search-secrets/pkg/code"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
-    "sync"
-
+    "github.com/pantheon-systems/search-secrets/pkg/interact"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
+    "github.com/sirsean/go-pool"
     "github.com/sirupsen/logrus"
+    "runtime"
     "strings"
     "time"
 )
 
 type (
     Finder struct {
-        driver               Driver
-        code                 *code.Code
         repoFilter           *structures.Filter
         refFilter            *structures.Filter
-        rules                []*rule.Rule
+        rules                []rule.Rule
         earliestTime         time.Time
         latestTime           time.Time
-        earliestCommit       string
-        latestCommit         string
         whitelistPath        structures.RegexpSet
         whitelistSecretIDSet structures.Set
+        secretTracker        structures.Set
+        interact             interact.Interactish
         db                   *database.Database
         log                  *logrus.Logger
     }
-    Driver interface {
-        Find(repoID, repoName, cloneDir string, refs []string, rules []*rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, out chan *DriverResult)
-    }
     DriverResult struct {
-        Err    error
         Commit *DriverCommit
     }
     DriverCommit struct {
         RepoID      string
+        RepoName    string
         Commit      string
         CommitHash  string
         Date        time.Time
-        AuthorFull string
+        AuthorFull  string
         AuthorEmail string
         FileChanges []*DriverFileChange
     }
@@ -52,131 +47,159 @@ type (
         Diff         string
     }
     DriverFinding struct {
-        Rule         *rule.Rule
-        FileRange    *structures.FileRange
-        SecretValues []string
+        RuleName  string
+        FileRange *structures.FileRange
+        Secrets   []*DriverSecret
+    }
+    DriverSecret struct {
+        Value   string
+        Decoded string
     }
 )
 
-func New(driver Driver, code *code.Code, repoFilter, refFilter *structures.Filter, rules []*rule.Rule, earliestTime, latestTime time.Time, earliestCommit, latestCommit string, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, db *database.Database, log *logrus.Logger) *Finder {
+func New(repoFilter *structures.Filter, refFilter *structures.Filter, rules []rule.Rule, earliestTime, latestTime time.Time, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, interact interact.Interactish, db *database.Database, log *logrus.Logger) *Finder {
     return &Finder{
-        driver:               driver,
-        code:                 code,
         repoFilter:           repoFilter,
         refFilter:            refFilter,
         rules:                rules,
         earliestTime:         earliestTime,
         latestTime:           latestTime,
-        earliestCommit:       earliestCommit,
-        latestCommit:         latestCommit,
         whitelistPath:        whitelistPath,
         whitelistSecretIDSet: whitelistSecretIDSet,
+        secretTracker:        structures.NewSet(nil),
+        interact:             interact,
         db:                   db,
         log:                  log,
     }
 }
 
-func (f *Finder) PrepareFindings() (err error) {
+func (f *Finder) Search() (secretCount int, err error) {
     for _, tableName := range []string{database.CommitTable, database.FindingTable, database.SecretTable, database.SecretFindingTable} {
         if f.db.TableExists(tableName) {
-            return errors.Errorv("finder-specific table already exists, cannot prepare findings", tableName)
+            err = errors.Errorv("one or more finder-specific tables already exist, cannot prepare findings", tableName)
+            return
         }
     }
 
     var repos []*database.Repo
-    repos, err = f.db.GetReposFiltered(f.repoFilter)
+    if f.repoFilter != nil {
+        repos, err = f.db.GetReposFilteredSorted(f.repoFilter)
+    } else {
+        repos, err = f.db.GetReposSorted()
+    }
     if err != nil {
         return
     }
 
-    var wg sync.WaitGroup
-    var wg1 sync.WaitGroup
+    numCPU := runtime.NumCPU()
+    runtime.GOMAXPROCS(numCPU)
+
     out := make(chan *DriverResult)
-    defer func() {
-        wg.Wait()
-        close(out)
-        wg1.Wait()
-    }()
 
-    // Create goroutines for repo that push findings into the channel
+    pl := pool.NewPool(len(repos), numCPU*2)
+    pl.Start()
+
+    prog := f.interact.NewProgress()
+
     for _, repo := range repos {
-        cloneDir := f.code.CloneDir(repo.Name)
-        refs := f.refFilter.Values()
+        log := f.log.WithField("repo", repo.Name)
 
-        wg.Add(1)
-        go func() {
-            defer wg.Done()
-            f.driver.Find(repo.ID, repo.Name, cloneDir, refs, f.rules, f.earliestTime, f.latestTime, f.earliestCommit, f.latestCommit, f.whitelistPath, out)
-        }()
+        log.Debug("adding find worker for repo")
+        pl.Add(worker{
+            repo:          repo,
+            cloneDir:      repo.CloneDir,
+            refs:          f.refFilter.Values(),
+            rules:         f.rules,
+            earliestTime:  f.earliestTime,
+            latestTime:    f.latestTime,
+            whitelistPath: f.whitelistPath,
+            prog:          prog,
+            out:           out,
+            searched:      structures.NewSet(nil),
+            db:            f.db,
+            log:           f.log.WithField("repo", repo.Name),
+        })
+        log.Debug("worker added")
     }
+
+    go func() {
+        pl.Close()
+        if prog != nil {
+            prog.Wait()
+        }
+        close(out)
+    }()
 
     // Process findings from channel
-    wg1.Add(1)
-    go func() {
-        defer wg1.Done()
-        var err error
-        err = f.ProcessResult(&out)
-        if err != nil {
-            f.log.Error(err)
-            return
+    for dr := range out {
+        log := f.log.WithField("repo", dr.Commit.RepoName)
+        log.Debug("received finding from channel")
+
+        if err = f.processCommit(dr.Commit); err != nil {
+            errors.ErrorLog(f.log, errors.WithMessage(err, "error processing commit"))
+            continue
         }
-    }()
+    }
+
+    secretCount = f.secretTracker.Len()
+    f.log.Infof("completed, found %d secrets", secretCount)
 
     return
 }
 
-func (f *Finder) ProcessResult(out *chan *DriverResult) (err error) {
-    for dr := range *out {
-        if dr.Err != nil {
-            err = dr.Err
-            return
-        }
+func (f *Finder) processCommit(dc *DriverCommit) (err error) {
+    commitID := database.CreateHashID(dc.RepoID, dc.CommitHash)
 
-        err = f.processCommit(dr)
-        if err != nil {
-            return
-        }
-    }
-
-    return
-}
-
-func (f *Finder) processCommit(dr *DriverResult) (err error) {
-    dc := dr.Commit
-
-    commit := &database.Commit{
-        ID:          dc.CommitHash,
-        RepoID:      dc.RepoID,
-        Commit:      dc.Commit,
-        CommitHash:  dc.CommitHash,
-        Date:        dc.Date,
-        AuthorFull: dc.AuthorFull,
-        AuthorEmail: dc.AuthorEmail,
-    }
-    if err = f.db.WriteCommit(commit); err != nil {
-        return
-    }
-
+    var saved bool
+    var oneSaved bool
     for _, dfc := range dc.FileChanges {
         for _, df := range dfc.Findings {
-            err = f.processFinding(dc, dfc, df)
+            newLog := f.log.WithFields(logrus.Fields{
+                "repo":       dc.RepoName,
+                "commitHash": dc.CommitHash,
+                "rule":       df.RuleName,
+                "path":       dfc.Path,
+            })
+
+            saved, err = f.processFinding(commitID, dfc, df, newLog)
             if err != nil {
                 return
+            }
+            if saved {
+                oneSaved = true
             }
         }
     }
 
+    if !oneSaved {
+        return
+    }
+
+    commit := &database.Commit{
+        ID:          commitID,
+        RepoID:      dc.RepoID,
+        Commit:      dc.Commit,
+        CommitHash:  dc.CommitHash,
+        Date:        dc.Date,
+        AuthorFull:  dc.AuthorFull,
+        AuthorEmail: dc.AuthorEmail,
+    }
+    err = f.db.WriteCommitIfNotExists(commit)
+
     return
 }
 
-func (f *Finder) processFinding(dc *DriverCommit, dfc *DriverFileChange, df *DriverFinding) (err error) {
-    findingID := database.CreateHashID(dc.CommitHash, df.Rule.Name, dfc.Path,
+func (f *Finder) processFinding(commitID string, dfc *DriverFileChange, df *DriverFinding, log *logrus.Entry) (saved bool, err error) {
+    findingID := database.CreateHashID(commitID, df.RuleName, dfc.Path,
         df.FileRange.StartLineNum, df.FileRange.StartIndex, df.FileRange.EndLineNum, df.FileRange.EndIndex)
+    log = log.WithFields(logrus.Fields{
+        "finding": findingID,
+    })
 
     // Collect secrets
     secrets := f.getSecretsFromFinding(df)
     if secrets == nil {
-        f.log.WithField("findingID", findingID).Debug("no secrets found for finding, not saving")
+        log.Debug("no secrets found for finding, not saving")
         return
     }
 
@@ -186,39 +209,46 @@ func (f *Finder) processFinding(dc *DriverCommit, dfc *DriverFileChange, df *Dri
 
     // Get diff excerpt
     diffPadding := 0 //TODO Add some padding that will show up in the report
-    diffExcerpt := getExcerpt(dfc.Diff, df.FileRange.StartDiffLineNum, df.FileRange.EndDiffLineNum)
+    //diffExcerpt := getExcerpt(dfc.Diff, df.FileRange.StartDiffLineNum, df.FileRange.EndDiffLineNum)
+    diffExcerpt := ""
 
-    log := f.log.WithFields(logrus.Fields{
-        "finding": findingID,
-        "rule":    df.Rule.Name,
-    })
+    const maxLength = 1000
+    if len(codeExcerpt) > maxLength {
+        log.Warn("truncating code output")
+        codeExcerpt = codeExcerpt[:maxLength] + " [...]"
+    }
+
     log.Debug("saving finding")
 
     // Save finding
     finding := &database.Finding{
-        ID:           findingID,
-        CommitID:     dc.CommitHash,
-        Rule:         df.Rule.Name,
-        Path:         dfc.Path,
-        StartLineNum: df.FileRange.StartLineNum,
-        StartIndex:   df.FileRange.StartIndex,
-        EndLineNum:   df.FileRange.EndLineNum,
-        EndIndex:     df.FileRange.EndIndex,
-        Code:         codeExcerpt,
-        CodePadding:  codePadding,
-        Diff:         diffExcerpt,
-        DiffPadding:  diffPadding,
+        ID:               findingID,
+        CommitID:         commitID,
+        Rule:             df.RuleName,
+        Path:             dfc.Path,
+        StartLineNum:     df.FileRange.StartLineNum,
+        StartIndex:       df.FileRange.StartIndex,
+        EndLineNum:       df.FileRange.EndLineNum,
+        EndIndex:         df.FileRange.EndIndex,
+        StartDiffLineNum: df.FileRange.StartDiffLineNum,
+        EndDiffLineNum:   df.FileRange.StartDiffLineNum,
+        Code:             codeExcerpt,
+        CodePadding:      codePadding,
+        Diff:             diffExcerpt,
+        DiffPadding:      diffPadding,
     }
     if err = f.db.WriteFinding(finding); err != nil {
         return
     }
 
     for _, secret := range secrets {
-        log.WithField("secret", secret.ID).Debug("saving secret")
+        log = log.WithField("secret", secret.ID)
+        log.Debug("saving secret")
 
-        if err = f.db.WriteSecret(secret); err != nil {
+        if err = f.db.WriteSecretIfNotExists(secret); err != nil {
             return
         }
+        f.secretTracker.Add(secret.ID)
 
         secretFinding := &database.SecretFinding{
             ID:        database.CreateHashID(findingID, secret.ID),
@@ -230,12 +260,14 @@ func (f *Finder) processFinding(dc *DriverCommit, dfc *DriverFileChange, df *Dri
         }
     }
 
+    saved = true
+
     return
 }
 
 func (f *Finder) getSecretsFromFinding(df *DriverFinding) (secrets []*database.Secret) {
-    for _, secretValue := range df.SecretValues {
-        secretID := database.CreateHashID(secretValue)
+    for _, secret := range df.Secrets {
+        secretID := database.CreateHashID(secret.Value)
 
         // Check whitelist
         if f.whitelistSecretIDSet.Contains(secretID) {
@@ -244,8 +276,9 @@ func (f *Finder) getSecretsFromFinding(df *DriverFinding) (secrets []*database.S
         }
 
         secrets = append(secrets, &database.Secret{
-            ID:    secretID,
-            Value: secretValue,
+            ID:           secretID,
+            Value:        secret.Value,
+            ValueDecoded: secret.Decoded,
         })
     }
     return
@@ -265,7 +298,7 @@ func getExcerpt(contents string, fromLineNum int, toLineNum int) (result string)
         }
         theRest = theRest[index+1:]
         lineNum += 1
-        if lineNum == toLineNum + 1 {
+        if lineNum == toLineNum+1 {
             return
         }
     }

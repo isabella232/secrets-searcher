@@ -3,6 +3,8 @@ package rule
 import (
     "bytes"
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
+    "github.com/sirupsen/logrus"
     gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
     gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
@@ -13,22 +15,36 @@ type FileChangeContext struct {
     chunks      []gitdiff.Chunk
     patchString string
     diff        *diffpkg.Diff
+    commit      *gitobject.Commit
+    repoName    string
+    log         *logrus.Entry
 }
 
-func NewFileChangeContext(fileChange *gitobject.Change) (result *FileChangeContext) {
+func NewFileChangeContext(repoName string, commit *gitobject.Commit, fileChange *gitobject.Change, log *logrus.Entry) (result *FileChangeContext) {
     return &FileChangeContext{
         FileChange: fileChange,
+        commit:     commit,
+        repoName:   repoName,
+        log:        log,
     }
 }
 
 func (fcc *FileChangeContext) Patch() (result *gitobject.Patch, err error) {
+    defer func() {
+        if recovered := recover(); recovered != nil {
+            err = errors.PanicWithMessage(recovered, "unable to retrieve patch")
+        }
+    }()
+
     if fcc.patch == nil {
         fcc.patch, err = fcc.FileChange.Patch()
         if err != nil {
             return
         }
     }
+
     result = fcc.patch
+
     return
 }
 
@@ -39,7 +55,22 @@ func (fcc *FileChangeContext) FilePatch() (result gitdiff.FilePatch, err error) 
         return
     }
 
+    if patch == nil {
+        fcc.log.Error("Filepatches is nil?")
+        return nil, nil
+    }
     result = patch.FilePatches()[0]
+    return
+}
+
+func (fcc *FileChangeContext) IsBinaryOrEmpty() (result bool, err error) {
+    var filePatch gitdiff.FilePatch
+    filePatch, err = fcc.FilePatch()
+    if err != nil {
+        return
+    }
+
+    result = filePatch.IsBinary()
     return
 }
 
@@ -95,8 +126,6 @@ func (fcc *FileChangeContext) Diff() (result *diffpkg.Diff, err error) {
     result = fcc.diff
     return
 }
-
-
 
 func (fcc *FileChangeContext) HasCodeChanges() (result bool, err error) {
     var chunks []gitdiff.Chunk

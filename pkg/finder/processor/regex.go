@@ -8,12 +8,11 @@ import (
 )
 
 type RegexProcessor struct {
-    re           *regexp.Regexp
-    whitelistRes *structures.RegexpSet
-    log          *logrus.Logger
+    re               *regexp.Regexp
+    whitelistCodeRes *structures.RegexpSet
 }
 
-func NewRegexProcessor(reString string, whitelistRes *structures.RegexpSet, log *logrus.Logger) (result *RegexProcessor, err error) {
+func NewRegexProcessor(reString string, whitelistCodeRes *structures.RegexpSet) (result *RegexProcessor, err error) {
     var re *regexp.Regexp
     re, err = regexp.Compile(reString)
     if err != nil {
@@ -21,34 +20,38 @@ func NewRegexProcessor(reString string, whitelistRes *structures.RegexpSet, log 
     }
 
     result = &RegexProcessor{
-        re:           re,
-        whitelistRes: whitelistRes,
-        log: log,
+        re:               re,
+        whitelistCodeRes: whitelistCodeRes,
     }
 
     return
 }
 
-func (p *RegexProcessor) FindInFileChange(*rule.FileChangeContext) (result []*rule.FileChangeFinding, err error) {
+func (p *RegexProcessor) FindInFileChange(*rule.FileChangeContext, *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *RegexProcessor) FindInLine(line string) (result []*rule.LineFinding, err error) {
-    indexPairs := p.re.FindAllStringIndex(line, 1)
+func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+    indexPairs := p.re.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
-        lineRange := &structures.LineRange{StartIndex: pair[0], EndIndex: pair[1]}
-        secret := lineRange.GetStringFrom(line)
+        lineRange := structures.NewLineRange(pair[0], pair[1])
+        lineRangeValue := lineRange.ExtractValue(line)
 
-        if p.whitelistRes.MatchStringAny(secret, secret) {
+        if p.isSecretWhitelisted(line, lineRangeValue) {
+            ignore = append(ignore, lineRangeValue.LineRange)
             continue
         }
 
         result = append(result, &rule.LineFinding{
-            LineRange:        lineRange,
-            SecretValues:     []string{secret},
+            LineRange: lineRangeValue.LineRange,
+            Secrets:   []*rule.Secret{{Value: lineRangeValue.Value}},
         })
     }
 
     return
+}
+
+func (p *RegexProcessor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
+    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
 }

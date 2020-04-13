@@ -6,10 +6,11 @@
 
 package reporter
 
-// report_templateTemplate is a generated function returning the template as a string.
+// template_reportTemplate is a generated function returning the template as a string.
 // That string should be parsed by the functions of the golang's template package.
-func report_templateTemplate() string {
+func template_reportTemplate() string {
 	var tmpl = "{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}\n" +
+		"{{$devEnabled:=.DevEnabled}}\n" +
 		"{{define \"link\"}}<a href=\"{{.URL}}\" title=\"{{.Tooltip}}\" data-toggle=\"tooltip\"\n" +
 		"                    data-placement=\"top\">{{.Label}}</a>{{end}}\n" +
 		"<!DOCTYPE html>\n" +
@@ -17,7 +18,7 @@ func report_templateTemplate() string {
 		"<head>\n" +
 		"    <meta charset=\"UTF-8\">\n" +
 		"    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, shrink-to-fit=no\">\n" +
-		"    <title>Title</title>\n" +
+		"    <title>Search Secrets Report {{.ReportDate.Format \"01/02/2006 15:04:05\"}}</title>\n" +
 		"    <link href=\"https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css\" rel=\"stylesheet\"\n" +
 		"          integrity=\"sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh\" crossorigin=\"anonymous\">\n" +
 		"    <link href=\"https://fonts.googleapis.com/icon?family=Material+Icons\" rel=\"stylesheet\">\n" +
@@ -27,14 +28,38 @@ func report_templateTemplate() string {
 		"        }\n" +
 		"\n" +
 		"        pre {\n" +
-		"            padding: 5px;\n" +
-		"            background-color: gainsboro;\n" +
+		"            padding: 15px;\n" +
+		"            background-color: #cccccc;\n" +
 		"        }\n" +
 		"\n" +
-		"        .finding-code pre {\n" +
-		"            max-width: 200px;\n" +
-		"            max-height: 200px;\n" +
-		"            text-overflow: ellipsis;\n" +
+		"        .report-info {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret {\n" +
+		"            padding-top: 30px;\n" +
+		"            margin-bottom: 50px;\n" +
+		"            border-top: 3px solid #e9e9e9;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret > h3 {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret-value {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret-value > h4 {\n" +
+		"            font-size: 14px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-col {\n" +
+		"            width: 40px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander a:hover {\n" +
+		"            text-decoration: none;\n" +
 		"        }\n" +
 		"\n" +
 		"        .finding-full {\n" +
@@ -44,30 +69,83 @@ func report_templateTemplate() string {
 		"        .finding-full.collapsed {\n" +
 		"            display: none;\n" +
 		"        }\n" +
+		"\n" +
+		"        .finding-full > th,\n" +
+		"        .finding-full > td {\n" +
+		"            background-color: #e9e9e9;\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full > .expander-col {\n" +
+		"            background-color: #fff;\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full > td {\n" +
+		"            padding: 0\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full table tr:first-child th,\n" +
+		"        .finding-full table tr:first-child td {\n" +
+		"            border-top-width: 0\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full table pre {\n" +
+		"            margin-bottom: 0\n" +
+		"        }\n" +
 		"    </style>\n" +
 		"</head>\n" +
 		"<body>\n" +
 		"<div class=\"container-fluid\">\n" +
-		"    {{range .Secrets}}\n" +
-		"        <div class=\"secret\" style=\"margin-bottom: 50px\">\n" +
-		"            <h3>Secret {{.ID}}</h3>\n" +
+		"    <h2>Search Secrets Report</h2>\n" +
+		"    <table class=\"table report-info\">\n" +
+		"        <tr>\n" +
+		"            <th scope=\"row\">Secrets found</th>\n" +
+		"            <td>{{ len .Secrets}}</td>\n" +
+		"        </tr>\n" +
+		"        <tr>\n" +
+		"            <th scope=\"row\">Completed</th>\n" +
+		"            <td>{{.ReportDate.Format \"01/02/2006 15:04:05\"}}</td>\n" +
+		"        </tr>\n" +
+		"        {{if .Secrets}}\n" +
+		"            <tr>\n" +
+		"                <th scope=\"row\">Repos with secrets</th>\n" +
+		"                <td>\n" +
+		"                    {{range $index, $repoName := .Repos}}{{if $index}}, {{end}}{{$repoName}}{{end}}\n" +
+		"                </td>\n" +
+		"            </tr>\n" +
+		"        {{end}}\n" +
+		"    </table>\n" +
+		"\n" +
+		"    {{if not .Secrets}}\n" +
+		"        <p>No secrets were found.</p>\n" +
+		"    {{end}}\n" +
+		"\n" +
+		"    {{range $, $secret := .Secrets}}\n" +
+		"        <div class=\"secret\">\n" +
+		"            <h3>Secret {{$secret.ID}}</h3>\n" +
 		"\n" +
 		"            <div class=\"secret-value\">\n" +
-		"                <pre><code>{{.Value}}</code></pre>\n" +
+		"                <h4>Value</h4>\n" +
+		"                <pre><code>{{$secret.Value}}</code></pre>\n" +
 		"            </div>\n" +
 		"\n" +
-		"            <h4>Findings</h4>\n" +
-		"            <table class=\"table findings\">\n" +
+		"            {{if $secret.ValueDecoded}}\n" +
+		"                <div class=\"secret-value secret-value-decoded\">\n" +
+		"                    <h4>Decoded</h4>\n" +
+		"                    <pre><code>{{$secret.ValueDecoded}}</code></pre>\n" +
+		"                </div>\n" +
+		"            {{end}}\n" +
+		"\n" +
+		"            <table class=\"table table-sm findings\">\n" +
 		"                <tr>\n" +
-		"                    <th scope=\"col\"></th>\n" +
+		"                    <th scope=\"col\" class=\"expander-col\"></th>\n" +
 		"                    <th scope=\"col\">Rule</th>\n" +
 		"                    <th scope=\"col\">Repo</th>\n" +
 		"                    <th scope=\"col\">Commit</th>\n" +
+		"                    <th scope=\"col\">File/Line</th>\n" +
 		"                    <th scope=\"col\">Date</th>\n" +
 		"                    <th scope=\"col\">Author</th>\n" +
-		"                    <th scope=\"col\">Line</th>\n" +
 		"                </tr>\n" +
-		"                {{range $i, $finding := .Findings}}\n" +
+		"                {{range $, $finding := .Findings}}\n" +
 		"                    <tr class=\"finding\">\n" +
 		"                        <td class=\"expander\">\n" +
 		"                            <a href=\"javascript:\" class=\"material-icons\"></a>\n" +
@@ -75,15 +153,14 @@ func report_templateTemplate() string {
 		"                        <td>{{$finding.RuleName}}</td>\n" +
 		"                        <td>{{template \"link\" $finding.RepoFullLink}}</td>\n" +
 		"                        <td>{{template \"link\" $finding.CommitHashLinkShort}}</td>\n" +
+		"                        <td>{{template \"link\" $finding.FileLineLinkShort}}</td>\n" +
 		"                        <td>{{$finding.CommitDate.Format \"01/02/2006\"}}</td>\n" +
 		"                        <td>{{$finding.CommitAuthorEmail}}</td>\n" +
-		"                        <td>{{template \"link\" $finding.FileLineLinkShort}}</td>\n" +
 		"                    </tr>\n" +
-		"                    <tr class=\"finding-full\">\n" +
-		"                        <td></td>\n" +
+		"                    <tr class=\"finding-full collapsed\">\n" +
+		"                        <td class=\"expander-col\"></td>\n" +
 		"                        <td colspan=\"6\">\n" +
-		"\n" +
-		"                            <table class=\"table finding-full\">\n" +
+		"                            <table class=\"table table-sm\">\n" +
 		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Rule</th>\n" +
 		"                                    <td>{{$finding.RuleName}}</td>\n" +
@@ -97,6 +174,10 @@ func report_templateTemplate() string {
 		"                                    <td>{{template \"link\" $finding.CommitHashLink}}</td>\n" +
 		"                                </tr>\n" +
 		"                                <tr>\n" +
+		"                                    <th scope=\"row\">File/Line</th>\n" +
+		"                                    <td>{{template \"link\" $finding.FileLineLink}}</td>\n" +
+		"                                </tr>\n" +
+		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Date</th>\n" +
 		"                                    <td>{{$finding.CommitDate.Format \"01/02/2006 15:04:05\"}}</td>\n" +
 		"                                </tr>\n" +
@@ -105,23 +186,25 @@ func report_templateTemplate() string {
 		"                                    <td>{{$finding.CommitAuthorFull}}</td>\n" +
 		"                                </tr>\n" +
 		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Line</th>\n" +
-		"                                    <td>{{template \"link\" $finding.FileLineLink}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Code</th>\n" +
 		"                                    <td>\n" +
-		"                                        <pre><code>{{$finding.Code}}</code></pre>\n" +
+		"                                        <pre><code>{{ $finding.CodeTrimmed }}</code></pre>\n" +
 		"                                    </td>\n" +
 		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Diff</th>\n" +
-		"                                    <td>\n" +
-		"                                        <pre><code>{{$finding.Diff}}</code></pre>\n" +
-		"                                    </td>\n" +
-		"                                </tr>\n" +
-		"                            </table>\n" +
+		"                                {{if $devEnabled}}\n" +
+		"                                    <tr>\n" +
+		"                                        <th scope=\"row\">Dev code</th>\n" +
+		"                                        <td>\n" +
+		"                                        <pre><code>Repo = \"infrastructure\"\n" +
+		"Commit = \"{{$finding.CommitHash}}\"\n" +
+		"Path = \"{{$finding.FilePath}}\"\n" +
+		"Rule = \"{{$finding.RuleName}}\"\n" +
+		"DiffLine = {{$finding.StartLineNumDiff}}</code></pre>\n" +
+		"                                        </td>\n" +
+		"                                    </tr>\n" +
+		"                                {{end}}\n" +
 		"\n" +
+		"                            </table>\n" +
 		"                        </td>\n" +
 		"                    </tr>\n" +
 		"                {{end}}\n" +
@@ -149,13 +232,17 @@ func report_templateTemplate() string {
 		"            let expander = finding.find('.expander');\n" +
 		"            let expanderLink = expander.children('a');\n" +
 		"\n" +
-		"            function toggleCollapsed() {\n" +
-		"                findingFull.toggleClass(collapsedClass);\n" +
+		"            function updateIcon() {\n" +
 		"                expanderLink[0].innerHTML = findingFull.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';\n" +
 		"            }\n" +
 		"\n" +
+		"            function toggleCollapsed() {\n" +
+		"                findingFull.toggleClass(collapsedClass);\n" +
+		"                updateIcon()\n" +
+		"            }\n" +
+		"\n" +
 		"            expanderLink.click(toggleCollapsed);\n" +
-		"            toggleCollapsed()\n" +
+		"            updateIcon()\n" +
 		"        })\n" +
 		"    });\n" +
 		"</script>\n" +
