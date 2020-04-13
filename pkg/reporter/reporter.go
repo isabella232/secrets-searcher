@@ -1,6 +1,6 @@
 package reporter
 
-//go:generate templify -p reporter -o template_report.go source/report.gohtml
+//go:generate go run github.com/wlbr/templify -p reporter -o template_report.go source/report.gohtml
 
 import (
     "fmt"
