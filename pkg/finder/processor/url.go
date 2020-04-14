@@ -3,7 +3,8 @@ package processor
 import (
     "github.com/pantheon-systems/search-secrets/pkg/entropy"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     urlpkg "net/url"
@@ -37,22 +38,28 @@ var (
 )
 
 type URLProcessor struct {
+    name             string
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewURLProcessor(whitelistCodeRes *structures.RegexpSet) (result *URLProcessor) {
+func NewURLProcessor(name string, whitelistCodeRes *structures.RegexpSet) (result *URLProcessor) {
     result = &URLProcessor{
+        name:             name,
         whitelistCodeRes: whitelistCodeRes,
     }
 
     return
 }
 
-func (p *URLProcessor) FindInFileChange(*rule.FileChangeContext, *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
+func (p *URLProcessor) Name() string {
+    return p.name
+}
+
+func (p *URLProcessor) FindInFileChange(*git.FileChange, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := findPossibleURLsInStringRe.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -89,9 +96,9 @@ func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rul
         }
 
         for _, secret := range secrets {
-            result = append(result, &rule.LineFinding{
+            result = append(result, &finder.FindingInLine{
                 LineRange: secret.LineRange,
-                Secrets:   []*rule.Secret{{Value: secret.Value}},
+                Secret:    &finder.Secret{Value: secret.Value},
             })
         }
     }

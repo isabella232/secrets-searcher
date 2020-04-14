@@ -1,18 +1,20 @@
 package processor
 
 import (
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "regexp"
 )
 
 type RegexProcessor struct {
+    name             string
     re               *regexp.Regexp
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewRegexProcessor(reString string, whitelistCodeRes *structures.RegexpSet) (result *RegexProcessor, err error) {
+func NewRegexProcessor(name, reString string, whitelistCodeRes *structures.RegexpSet) (result *RegexProcessor, err error) {
     var re *regexp.Regexp
     re, err = regexp.Compile(reString)
     if err != nil {
@@ -20,6 +22,7 @@ func NewRegexProcessor(reString string, whitelistCodeRes *structures.RegexpSet) 
     }
 
     result = &RegexProcessor{
+        name:             name,
         re:               re,
         whitelistCodeRes: whitelistCodeRes,
     }
@@ -27,11 +30,15 @@ func NewRegexProcessor(reString string, whitelistCodeRes *structures.RegexpSet) 
     return
 }
 
-func (p *RegexProcessor) FindInFileChange(*rule.FileChangeContext, *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
+func (p *RegexProcessor) Name() string {
+    return p.name
+}
+
+func (p *RegexProcessor) FindInFileChange(*git.FileChange, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := p.re.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -43,9 +50,9 @@ func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*rul
             continue
         }
 
-        result = append(result, &rule.LineFinding{
+        result = append(result, &finder.FindingInLine{
             LineRange: lineRangeValue.LineRange,
-            Secrets:   []*rule.Secret{{Value: lineRangeValue.Value}},
+            Secret:    &finder.Secret{Value: lineRangeValue.Value},
         })
     }
 

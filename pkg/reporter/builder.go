@@ -34,9 +34,9 @@ type (
         Findings     []findingData `yaml:"findings"`
     }
     findingData struct {
-        ID                  string    `yaml:"finding-id"`
-        RuleName            string    `yaml:"rule"`
-        RepoName            string    `yaml:"-"`
+        ID            string `yaml:"finding-id"`
+        ProcessorName string `yaml:"processor"`
+        RepoName      string `yaml:"-"`
         RepoFullLink        linkData  `yaml:"repo"`
         CommitHash          string    `yaml:"-"`
         CommitHashLink      linkData  `yaml:"commit"`
@@ -76,15 +76,15 @@ func NewBuilder(appURL string, db *database.Database, log *logrus.Logger) *Build
 func (r *Builder) buildReportData() (result *reportData, err error) {
     r.log.Debug("getting list of secrets ...")
 
-    var sfsBySecret map[*database.Secret][]*database.SecretFinding
-    sfsBySecret, err = r.db.GetSecretFindingsGroupedBySecret()
+    var findingsBySecret map[*database.Secret][]*database.Finding
+    findingsBySecret, err = r.db.GetFindingsGroupedBySecret()
     if err != nil {
         return
     }
 
     // Sort secrets since they were just in a map and lost order
     var secrets []*database.Secret
-    for secret := range sfsBySecret {
+    for secret := range findingsBySecret {
         secrets = append(secrets, secret)
     }
     r.db.SortSecrets(secrets)
@@ -92,15 +92,15 @@ func (r *Builder) buildReportData() (result *reportData, err error) {
     var reportSecrets []secretData
     var ok bool
     for _, secret := range secrets {
-        var sfs []*database.SecretFinding
-        sfs, ok = sfsBySecret[secret]
+        var findings []*database.Finding
+        findings, ok = findingsBySecret[secret]
         if !ok {
             err = errors.New("secret does not exist as index")
             return
         }
 
         var secretData *secretData
-        secretData, err = r.buildSecretData(secret, sfs)
+        secretData, err = r.buildSecretData(secret, findings)
         if err != nil {
             return
         }
@@ -128,7 +128,7 @@ func (r *Builder) buildReportData() (result *reportData, err error) {
     return
 }
 
-func (r *Builder) buildSecretData(secret *database.Secret, sfs []*database.SecretFinding) (result *secretData, err error) {
+func (r *Builder) buildSecretData(secret *database.Secret, sfs []*database.Finding) (result *secretData, err error) {
     var findings []findingData
     for _, dec := range sfs {
         var findingData findingData
@@ -152,13 +152,7 @@ func (r *Builder) buildSecretData(secret *database.Secret, sfs []*database.Secre
     return
 }
 
-func (r *Builder) buildFindingData(dec *database.SecretFinding) (result findingData, err error) {
-    var finding *database.Finding
-    finding, err = r.db.GetFinding(dec.FindingID)
-    if err != nil {
-        return
-    }
-
+func (r *Builder) buildFindingData(finding *database.Finding) (result findingData, err error) {
     var commit *database.Commit
     commit, err = r.db.GetCommit(finding.CommitID)
     if err != nil {
@@ -191,7 +185,7 @@ func (r *Builder) buildFindingData(dec *database.SecretFinding) (result findingD
 
     result = findingData{
         ID:                  finding.ID,
-        RuleName:            finding.Rule,
+        ProcessorName:       finding.Processor,
         RepoName:            repo.Name,
         RepoFullLink:        linkData{Label: repo.FullName, URL: repo.HTMLURL},
         CommitHash:          commit.CommitHash,

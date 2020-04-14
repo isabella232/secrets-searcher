@@ -14,20 +14,20 @@ var (
     Path         = ""
     DiffLine     = -1
     LineContains = ""
-    Rule         = ""
+    Processor    = ""
 )
 
 func init() {
     //EnableTestMode = true
 
-    EnableCodePhase = false
-    EnableSearchPhase = false
+    //EnableCodePhase = false
+    //EnableSearchPhase = false
     //EnableReportPhase = false
 
     //Repo = "hermes"
     //Commit = "a69d35dc0612535167261e8ea8a8d61e9b7d2f76"
     //Path = "scripts/rotate-auth0-secrets.sh"
-    //Rule = "generic-secret"
+    //Processor = "generic-secret"
     //DiffLine = 16
 
     // Keep this here
@@ -37,6 +37,6 @@ func init() {
         Path = ""
         DiffLine = -1
         LineContains = ""
-        Rule = ""
+        Processor = ""
     }
 }

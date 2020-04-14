@@ -5,8 +5,19 @@ type FileRange struct {
     StartIndex       int
     EndLineNum       int
     EndIndex         int
-    StartDiffLineNum int
-    EndDiffLineNum   int
+    StartDiffLineNum int // FIXME This is not general enough for this package
+    EndDiffLineNum   int // FIXME This is not general enough for this package
+}
+
+func NewFileRangeFromLineRange(lineRange *LineRange, lineNum, diffLineNum int) (result *FileRange) {
+    return &FileRange{
+        StartLineNum:     lineNum,
+        StartIndex:       lineRange.StartIndex,
+        EndLineNum:       lineNum,
+        EndIndex:         lineRange.EndIndex,
+        StartDiffLineNum: diffLineNum,
+        EndDiffLineNum:   diffLineNum,
+    }
 }
 
 func (r FileRange) Overlaps(other *FileRange) bool {

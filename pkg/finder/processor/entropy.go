@@ -6,7 +6,8 @@ import (
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
     entropypkg "github.com/pantheon-systems/search-secrets/pkg/entropy"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "regexp"
@@ -27,6 +28,7 @@ var (
 )
 
 type EntropyProcessor struct {
+    name             string
     Charset          string
     LengthThreshold  int
     EntropyThreshold float64
@@ -34,8 +36,9 @@ type EntropyProcessor struct {
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewEntropyProcessor(charset string, lengthThreshold int, entropyThreshold float64, whitelistCodeRes *structures.RegexpSet, skipPEMs bool) (result *EntropyProcessor) {
+func NewEntropyProcessor(name, charset string, lengthThreshold int, entropyThreshold float64, whitelistCodeRes *structures.RegexpSet, skipPEMs bool) (result *EntropyProcessor) {
     return &EntropyProcessor{
+        name:             name,
         Charset:          charset,
         LengthThreshold:  lengthThreshold,
         EntropyThreshold: entropyThreshold,
@@ -44,14 +47,18 @@ func NewEntropyProcessor(charset string, lengthThreshold int, entropyThreshold f
     }
 }
 
-func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext, log *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
+func (p *EntropyProcessor) Name() string {
+    return p.name
+}
+
+func (p *EntropyProcessor) FindInFileChange(fileChange *git.FileChange, log *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
     var diff *diffpkg.Diff
-    diff, err = context.Diff()
+    diff, err = fileChange.Diff()
     if err != nil {
         return
     }
 
-    if p.skipPEMs && strings.HasSuffix(context.FileChange.To.Name, ".pem") {
+    if p.skipPEMs && strings.HasSuffix(fileChange.Path, ".pem") {
         log.Debug("skipping PEM file because skipPEMs is true")
         return
     }
@@ -109,8 +116,8 @@ func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext, log
         }
 
         // Find entropy in line
-        var ranges []*structures.LineRangeValue
-        ranges, err = entropypkg.FindHighEntropyWords(diff.Line.Code, p.Charset, p.LengthThreshold, p.EntropyThreshold)
+        var findings []*finder.Finding
+        findings, err := p.findEntropyInLine(diff.Line)
         if err != nil {
             err = errors.WithMessage(err, "unable to search for high entropy words, continuing to next line")
             if ok := diff.Increment(); !ok {
@@ -118,56 +125,8 @@ func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext, log
             }
             continue
         }
-        if ranges == nil {
-            if ok := diff.Increment(); !ok {
-                break
-            }
-            continue
-        }
-
-        var secrets []*rule.Secret
-        for _, rang := range ranges {
-            secretValue := rang.Value
-
-            // Try to decode base64
-            var decoded []byte
-            var decodedString string
-            var decodeErr error
-            switch p.Charset {
-            case entropypkg.Base64CharsetName:
-                decoded, decodeErr = base64.StdEncoding.DecodeString(secretValue)
-                if decodeErr == nil {
-                    decodedString = string(decoded)
-                }
-            case entropypkg.HexCharsetName:
-                decoded, decodeErr = hex.DecodeString(secretValue)
-                if decodeErr == nil {
-                    decodedString = string(decoded)
-                }
-            }
-
-            secrets = append(secrets, &rule.Secret{
-                Value:   secretValue,
-                Decoded: decodedString,
-            })
-        }
-
-        for _, rang := range ranges {
-            if p.isSecretWhitelisted(diff.Line.Code, rang) {
-                continue
-            }
-
-            result = append(result, &rule.FileChangeFinding{
-                FileRange: &structures.FileRange{
-                    StartLineNum:     diff.Line.LineNumFile,
-                    StartIndex:       rang.LineRange.StartIndex,
-                    EndLineNum:       diff.Line.LineNumFile,
-                    EndIndex:         rang.LineRange.EndIndex,
-                    StartDiffLineNum: diff.Line.LineNumDiff,
-                    EndDiffLineNum:   diff.Line.LineNumDiff,
-                },
-                Secrets: secrets,
-            })
+        if findings != nil {
+            result = append(result, findings...)
         }
 
         if ok := diff.Increment(); !ok {
@@ -178,7 +137,47 @@ func (p *EntropyProcessor) FindInFileChange(context *rule.FileChangeContext, log
     return
 }
 
-func (p *EntropyProcessor) FindInLine(string, *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+func (p *EntropyProcessor) FindInLine(string, *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+    return
+}
+
+func (p *EntropyProcessor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.Finding, err error) {
+    var ranges []*structures.LineRangeValue
+    ranges, err = entropypkg.FindHighEntropyWords(diffLine.Code, p.Charset, p.LengthThreshold, p.EntropyThreshold)
+    if err != nil || ranges == nil {
+        return
+    }
+
+    for _, rang := range ranges {
+        secretValue := rang.Value
+
+        // Try to decode base64
+        var decoded []byte
+        var decodedString string
+        var decodeErr error
+        switch p.Charset {
+        case entropypkg.Base64CharsetName:
+            decoded, decodeErr = base64.StdEncoding.DecodeString(secretValue)
+            if decodeErr == nil {
+                decodedString = string(decoded)
+            }
+        case entropypkg.HexCharsetName:
+            decoded, decodeErr = hex.DecodeString(secretValue)
+            if decodeErr == nil {
+                decodedString = string(decoded)
+            }
+        }
+
+        if p.isSecretWhitelisted(diffLine.Code, rang) {
+            continue
+        }
+
+        result = append(result, &finder.Finding{
+            FileRange: structures.NewFileRangeFromLineRange(rang.LineRange, diffLine.LineNumFile, diffLine.LineNumDiff),
+            Secret:    &finder.Secret{Value: secretValue, Decoded: decodedString},
+        })
+    }
+
     return
 }
 

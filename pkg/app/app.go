@@ -10,7 +10,6 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/dev"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     finderpkg "github.com/pantheon-systems/search-secrets/pkg/finder"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
     interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
     "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     reporterpkg "github.com/pantheon-systems/search-secrets/pkg/reporter"
@@ -42,9 +41,9 @@ type (
         Interactive          bool
         SourceDir            string
         OutputDir            string
-        Refs                 []string
-        Rules                []rule.Rule
-        EarliestTime         time.Time
+        Refs         []string
+        Processors   []finderpkg.Processor
+        EarliestTime time.Time
         LatestTime           time.Time
         WhitelistPath        structures.RegexpSet
         WhitelistSecretIDSet structures.Set
@@ -99,13 +98,13 @@ func New(cfg *Config) (result *App, err error) {
 
     // Create finder
     refFilter := buildRefFilter(cfg.Refs)
-    finder := finderpkg.New(nil, refFilter, cfg.Rules, cfg.EarliestTime, cfg.LatestTime, cfg.WhitelistPath, cfg.WhitelistSecretIDSet, interact, db, cfg.Log)
+    finder := finderpkg.New(nil, refFilter, cfg.Processors, cfg.EarliestTime, cfg.LatestTime, cfg.WhitelistPath, cfg.WhitelistSecretIDSet, interact, db, cfg.Log)
 
     // Create reporter
     reporter := reporterpkg.New(reportDir, reportArchiveDir, cfg.SkipReportSecrets, cfg.AppURL, db, cfg.Log)
 
     // Create tester
-    tester := reporterpkg.NewTester(cfg.Rules, cfg.WhitelistPath, cfg.WhitelistSecretIDSet, db, cfg.Log)
+    tester := reporterpkg.NewTester(cfg.Processors, cfg.WhitelistPath, cfg.WhitelistSecretIDSet, db, cfg.Log)
 
     result = &App{
         code:             code,
@@ -206,7 +205,7 @@ func (a *App) executeReportPhase() (err error) {
 }
 
 func (a *App) executeTestPhase() (err error) {
-    a.log.Info("testing existing secrets against rules ... ")
+    a.log.Info("testing existing secrets against processors ... ")
     if err = a.tester.Run(); err != nil {
         return errors.WithMessage(err, "unable to run tester")
     }

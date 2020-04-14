@@ -127,7 +127,7 @@
             <table class="table table-sm findings">
                 <tr>
                     <th scope="col" class="expander-col"></th>
-                    <th scope="col">Rule</th>
+                    <th scope="col">Processor</th>
                     <th scope="col">Repo</th>
                     <th scope="col">Commit</th>
                     <th scope="col">File/Line</th>
@@ -139,7 +139,7 @@
                         <td class="expander">
                             <a href="javascript:" class="material-icons"></a>
                         </td>
-                        <td>{{$finding.RuleName}}</td>
+                        <td>{{$finding.ProcessorName}}</td>
                         <td>{{template "link" $finding.RepoFullLink}}</td>
                         <td>{{template "link" $finding.CommitHashLinkShort}}</td>
                         <td>{{template "link" $finding.FileLineLinkShort}}</td>
@@ -151,8 +151,8 @@
                         <td colspan="6">
                             <table class="table table-sm">
                                 <tr>
-                                    <th scope="row">Rule</th>
-                                    <td>{{$finding.RuleName}}</td>
+                                    <th scope="row">Processor</th>
+                                    <td>{{$finding.ProcessorName}}</td>
                                 </tr>
                                 <tr>
                                     <th scope="row">Repo</th>
@@ -187,7 +187,7 @@
                                         <pre><code>Repo = "infrastructure"
 Commit = "{{$finding.CommitHash}}"
 Path = "{{$finding.FilePath}}"
-Rule = "{{$finding.RuleName}}"
+Processor = "{{$finding.ProcessorName}}"
 DiffLine = {{$finding.StartLineNumDiff}}</code></pre>
                                         </td>
                                     </tr>

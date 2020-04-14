@@ -172,6 +172,33 @@ func (d *Database) WriteFinding(obj *Finding) (err error) {
     return
 }
 
+func (d *Database) GetFindingsGroupedBySecret() (result map[*Secret][]*Finding, err error) {
+    var secretIndex map[string]*Secret
+    secretIndex, err = d.GetSecretsWithIDIndex()
+    if err != nil {
+        return
+    }
+
+    var findings []*Finding
+    findings, err = d.GetFindings()
+    if err != nil {
+        return
+    }
+
+    result = make(map[*Secret][]*Finding)
+
+    for _, finding := range findings {
+        secret, ok := secretIndex[finding.SecretID]
+        if !ok {
+            err = errors.Errorv("no secret found for secret ID", finding.SecretID)
+            return
+        }
+        result[secret] = append(result[secret], finding)
+    }
+
+    return
+}
+
 // Secret
 
 func (d *Database) GetSecret(id string) (result *Secret, err error) {
@@ -243,64 +270,5 @@ func (d *Database) WriteSecretIfNotExists(obj *Secret) (err error) {
         err = d.write(SecretTable, obj.ID, obj)
     }
 
-    return
-}
-
-// SecretFinding
-
-func (d *Database) GetSecretFinding(id string) (result *SecretFinding, err error) {
-    if err = d.read(SecretFindingTable, id, &result); err != nil {
-        return
-    }
-
-    return
-}
-
-func (d *Database) GetSecretFindings() (result []*SecretFinding, err error) {
-    lines, err := d.readAll(SecretFindingTable)
-    if err != nil {
-        return
-    }
-
-    for _, line := range lines {
-        var obj *SecretFinding
-        if err = json.Unmarshal([]byte(line), &obj); err != nil {
-            return
-        }
-        result = append(result, obj)
-    }
-
-    return
-}
-
-func (d *Database) GetSecretFindingsGroupedBySecret() (result map[*Secret][]*SecretFinding, err error) {
-    var secretIndex map[string]*Secret
-    secretIndex, err = d.GetSecretsWithIDIndex()
-    if err != nil {
-        return
-    }
-
-    var sfs []*SecretFinding
-    sfs, err = d.GetSecretFindings()
-    if err != nil {
-        return
-    }
-
-    result = make(map[*Secret][]*SecretFinding)
-
-    for _, sf := range sfs {
-        secret, ok := secretIndex[sf.SecretID]
-        if !ok {
-            err = errors.Errorv("no secret found for secret ID", sf.SecretID)
-            return
-        }
-        result[secret] = append(result[secret], sf)
-    }
-
-    return
-}
-
-func (d *Database) WriteSecretFinding(obj *SecretFinding) (err error) {
-    err = d.write(SecretFindingTable, obj.ID, obj)
     return
 }

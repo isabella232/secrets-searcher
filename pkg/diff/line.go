@@ -27,9 +27,9 @@ func NewLine(lineString string, lineNumDiff, lineNumFile int) *Line {
 
     pre := lineString[:1]
     code := lineString[1:]
-    isEqu := pre == EqualPrefix
-    isAdd := pre == AddPrefix
-    isDel := pre == DeletePrefix
+    isEqu := pre == equalPrefix
+    isAdd := pre == addPrefix
+    isDel := pre == deletePrefix
 
     return &Line{
         LineNumDiff: lineNumDiff,

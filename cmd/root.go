@@ -4,6 +4,7 @@ import (
     "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database/enum/source_provider"
     "github.com/pantheon-systems/search-secrets/pkg/dev"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
     "os"
     "path/filepath"
     "regexp"
@@ -15,7 +16,6 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/database/enum/processor_type"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/finder/processor"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
     "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
@@ -61,13 +61,13 @@ type (
         Source         sourceConfig `mapstructure:"source"`
 
         // Finder config
-        RuleConfigs        []ruleConfig `mapstructure:"rules"`
-        Refs               []string     `mapstructure:"refs"`
-        EarliestDate       time.Time    `mapstructure:"earliest-date"`
-        LatestDate         time.Time    `mapstructure:"latest-date"`
-        WhitelistPathMatch []string     `mapstructure:"whitelist-path-match"`
-        WhitelistSecretIDs []string     `mapstructure:"whitelist-secret-ids"`
-        WhitelistSecretDir string       `mapstructure:"whitelist-secret-dir"`
+        ProcessorConfig    []processorConfig `mapstructure:"processors"`
+        Refs               []string          `mapstructure:"refs"`
+        EarliestDate       time.Time         `mapstructure:"earliest-date"`
+        LatestDate         time.Time         `mapstructure:"latest-date"`
+        WhitelistPathMatch []string          `mapstructure:"whitelist-path-match"`
+        WhitelistSecretIDs []string          `mapstructure:"whitelist-secret-ids"`
+        WhitelistSecretDir string            `mapstructure:"whitelist-secret-dir"`
 
         // Reporting config
         SkipReportSecrets bool `mapstructure:"skip-report-secrets"`
@@ -91,8 +91,8 @@ type (
         SkipForks    bool   `mapstructure:"exclude-forks"`
     }
 
-    // Rule config
-    ruleConfig struct {
+    // Processor config
+    processorConfig struct {
 
         // Setup
         Name      string `mapstructure:"name"`
@@ -111,7 +111,7 @@ type (
         EntropyConfig entropyConfig `mapstructure:"entropy"`
     }
 
-    // Entropy rule config
+    // Entropy processor config
     entropyConfig struct {
         Charset          string  `mapstructure:"charset"`
         LengthThreshold  int     `mapstructure:"length-threshold"`
@@ -134,7 +134,7 @@ func init() {
 
 func runApp(*cobra.Command, []string) {
     dev.Enabled = cfg.DevEnabled
-    if dev.Enabled {
+    if dev.Enabled && dev.Repo != "" {
         log.Warn("DEV MODE ENABLED")
         cfg.Source.Repos = []string{dev.Repo}
     }
@@ -144,8 +144,8 @@ func runApp(*cobra.Command, []string) {
     var app *apppkg.App
     var err error
 
-    var rules []rule.Rule
-    rules, err = buildRules(cfg.RuleConfigs)
+    var processors []finder.Processor
+    processors, err = buildProcessors(cfg.ProcessorConfig)
     var earliestTime = cfg.EarliestDate
     var latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
 
@@ -168,7 +168,7 @@ func runApp(*cobra.Command, []string) {
         Interactive:          cfg.Interactive,
         OutputDir:            cfg.OutputDir,
         Refs:                 cfg.Refs,
-        Rules:                rules,
+        Processors:           processors,
         EarliestTime:         earliestTime,
         LatestTime:           latestTime,
         WhitelistPath:        whitelistPath,
@@ -374,41 +374,55 @@ func validateParameters() {
         validationAssertTrue(cfg.Source.Organization != "", "source.organization", "")
     case source_provider.Local{}.New().Value():
         errors.Fatal(log, errors.New("currently only \"github\" is supported as `source.provider`"))
-        validationAssertTrue(cfg.Source.LocalDir != "", "source.dir", "")
+        validateSourceLocalDirParameter()
     default:
         errors.Fatal(log, errors.New("currently only \"github\" is supported as `source.provider`"))
     }
 
-    // `rules` config
-    validationAssertTrue(len(cfg.RuleConfigs) > 0, "rules", "")
-    ruleNameRegistry := structures.NewSet(nil)
-    for i, ruleConf := range cfg.RuleConfigs {
-        configNameBase := fmt.Sprintf("rules.%d.", i)
+    // `processors` config
+    validationAssertTrue(len(cfg.ProcessorConfig) > 0, "processors", "")
+    procNameRegistry := structures.NewSet(nil)
+    for i, conf := range cfg.ProcessorConfig {
+        configNameBase := fmt.Sprintf("processors.%d.", i)
 
-        validationAssertTrue(ruleConf.Name != "", configNameBase+"name", "")
+        validationAssertTrue(conf.Name != "", configNameBase+"name", "")
 
-        // Unique rule name
-        validationAssertTrue(!ruleNameRegistry.Contains(ruleConf.Name), configNameBase+"name",
-            "parameter `%s` has a duplicate name to a previous rule")
-        ruleNameRegistry.Add(ruleConf.Name)
+        // Unique processor name
+        validationAssertTrue(!procNameRegistry.Contains(conf.Name), configNameBase+"name",
+            "parameter `%s` has a duplicate name to a previous processor")
+        procNameRegistry.Add(conf.Name)
 
         // Processor
-        validationAssertTrue(ruleConf.Processor != "", configNameBase+"processor", "")
-        processorType := processor_type.NewProcessorTypeFromValue(ruleConf.Processor)
+        validationAssertTrue(conf.Processor != "", configNameBase+"processor", "")
+        processorType := processor_type.NewProcessorTypeFromValue(conf.Processor)
         validationAssertTrue(processorType != nil, configNameBase+"processor",
             "the value for parameter `%s` is not a valid processor type")
 
         // Processor-specific validation
-        switch ruleConf.Processor {
+        switch conf.Processor {
         case processor_type.Regex{}.New().Value():
-            validationAssertTrue(ruleConf.RegexString != "", configNameBase+"regex", "")
+            validationAssertTrue(conf.RegexString != "", configNameBase+"regex", "")
         case processor_type.PEM{}.New().Value():
-            validationAssertTrue(ruleConf.PEMType != "", configNameBase+"pem-type", "")
+            validationAssertTrue(conf.PEMType != "", configNameBase+"pem-type", "")
         case processor_type.Entropy{}.New().Value():
             entConfNameBase := configNameBase + "entropy."
-            validationAssertTrue(ruleConf.EntropyConfig.Charset != "", entConfNameBase+"charset", "")
+            validationAssertTrue(conf.EntropyConfig.Charset != "", entConfNameBase+"charset", "")
         }
     }
+}
+
+func validateSourceLocalDirParameter() {
+    validationAssertTrue(cfg.Source.LocalDir != "", "source.dir", "")
+    localAbs, err := filepath.Abs(cfg.Source.LocalDir)
+    if err != nil {
+        errors.Fatal(log, errors.Errorv("unable to get abs path", cfg.Source.LocalDir))
+    }
+    outputDirAbs, err := filepath.Abs(cfg.OutputDir)
+    if err != nil {
+        errors.Fatal(log, errors.Errorv("unable to get abs path", cfg.OutputDir))
+    }
+    validationAssertTrue(!strings.HasPrefix(localAbs, outputDirAbs), "source.dir",
+        "your `%s` dir cannot be within your output dir")
 }
 
 func validationAssertTrue(valid bool, configName string, messageTemplate string) {
@@ -418,40 +432,40 @@ func validationAssertTrue(valid bool, configName string, messageTemplate string)
     }
 }
 
-func buildRules(ruleConfigs []ruleConfig) (result []rule.Rule, err error) {
-    for _, ruleConf := range ruleConfigs {
-        var proc rule.Processor
-        proc, err = buildProcessor(ruleConf)
+func buildProcessors(procConfs []processorConfig) (result []finder.Processor, err error) {
+    for _, conf := range procConfs {
+        var proc finder.Processor
+        proc, err = buildProcessor(conf)
         if err != nil {
             return
         }
 
-        result = append(result, rule.New(ruleConf.Name, proc))
+        result = append(result, proc)
     }
     return
 }
 
-func buildProcessor(ruleConf ruleConfig) (result rule.Processor, err error) {
+func buildProcessor(procConf processorConfig) (result finder.Processor, err error) {
     var whitelistCodeRes structures.RegexpSet
-    if ruleConf.WhitelistCodeMatch != nil {
-        whitelistCodeRes, err = structures.NewRegexpSetFromStrings(ruleConf.WhitelistCodeMatch)
+    if procConf.WhitelistCodeMatch != nil {
+        whitelistCodeRes, err = structures.NewRegexpSetFromStrings(procConf.WhitelistCodeMatch)
         if err != nil {
             return
         }
     }
 
-    switch ruleConf.Processor {
+    switch procConf.Processor {
     case processor_type.URL{}.New().Value():
-        result = processor.NewURLProcessor(&whitelistCodeRes)
+        result = processor.NewURLProcessor(procConf.Name, &whitelistCodeRes)
     case processor_type.Regex{}.New().Value():
-        result, err = processor.NewRegexProcessor(ruleConf.RegexString, &whitelistCodeRes)
+        result, err = processor.NewRegexProcessor(procConf.Name, procConf.RegexString, &whitelistCodeRes)
     case processor_type.PEM{}.New().Value():
-        result = processor.NewPEMProcessor(ruleConf.PEMType)
+        result = processor.NewPEMProcessor(procConf.Name, procConf.PEMType)
     case processor_type.Entropy{}.New().Value():
-        ec := ruleConf.EntropyConfig
-        result = processor.NewEntropyProcessor(ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
+        ec := procConf.EntropyConfig
+        result = processor.NewEntropyProcessor(procConf.Name, ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
     default:
-        err = errors.Errorv("unknown search type", ruleConf.Processor)
+        err = errors.Errorv("unknown search type", procConf.Processor)
     }
     return
 }

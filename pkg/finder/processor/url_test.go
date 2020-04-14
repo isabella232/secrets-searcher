@@ -42,7 +42,7 @@ func TestEntropyInURLPath(t *testing.T) {
     require.NoError(t, err)
     require.NotNil(t, response)
     require.Len(t, response, 1)
-    require.Equal(t, encoded0, response[0].Secrets[0].Value)
+    require.Equal(t, encoded0, response[0].Secret.Value)
     require.Equal(t, encoded0, response[0].LineRange.ExtractValue(input).Value)
 }
 
@@ -57,9 +57,9 @@ func TestMultipleEntropyValuesInURLPath(t *testing.T) {
     require.NoError(t, err)
     require.NotNil(t, response)
     require.Len(t, response, 2)
-    require.Equal(t, encoded0, response[0].Secrets[0].Value)
+    require.Equal(t, encoded0, response[0].Secret.Value)
     require.Equal(t, encoded0, response[0].LineRange.ExtractValue(input).Value)
-    require.Equal(t, encoded1, response[1].Secrets[0].Value)
+    require.Equal(t, encoded1, response[1].Secret.Value)
     require.Equal(t, encoded1, response[1].LineRange.ExtractValue(input).Value)
 }
 
@@ -74,7 +74,7 @@ func TestEntropyAsURLPath(t *testing.T) {
     require.NoError(t, err)
     require.NotNil(t, response)
     require.Len(t, response, 1)
-    require.Equal(t, encoded0, response[0].Secrets[0].Value)
+    require.Equal(t, encoded0, response[0].Secret.Value)
     require.Equal(t, encoded0, response[0].LineRange.ExtractValue(input).Value)
 }
 
@@ -89,7 +89,7 @@ func TestEntropyAtStartOfURLPath(t *testing.T) {
     require.NoError(t, err)
     require.NotNil(t, response)
     require.Len(t, response, 1)
-    require.Equal(t, encoded0, response[0].Secrets[0].Value)
+    require.Equal(t, encoded0, response[0].Secret.Value)
     require.Equal(t, encoded0, response[0].LineRange.ExtractValue(input).Value)
 }
 
@@ -102,7 +102,7 @@ func TestPasswordInURLPath(t *testing.T) {
     require.NoError(t, err)
     require.NotNil(t, response)
     require.Len(t, response, 1)
-    require.Equal(t, encoded0, response[0].Secrets[0].Value)
+    require.Equal(t, encoded0, response[0].Secret.Value)
     require.Equal(t, encoded0, response[0].LineRange.ExtractValue(encoded0Line).Value)
 }
 

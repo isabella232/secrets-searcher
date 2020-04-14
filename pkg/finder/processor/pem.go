@@ -3,7 +3,8 @@ package processor
 import (
     "fmt"
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "regexp"
@@ -12,6 +13,7 @@ import (
 
 type (
     PEMProcessor struct {
+        name             string
         pemType            string
         header             string
         footer             string
@@ -20,7 +22,7 @@ type (
     }
 )
 
-func NewPEMProcessor(pemType string) (result *PEMProcessor) {
+func NewPEMProcessor(name, pemType string) (result *PEMProcessor) {
     header := fmt.Sprintf("-----BEGIN %s-----", pemType)
     footer := fmt.Sprintf("-----END %s-----", pemType)
     oneLineJSONPattern := regexp.MustCompile(`: *\"-----BEGIN ` + header + `-----\\n(.*)\\n` + footer + `\\n\",?$`)
@@ -34,6 +36,7 @@ func NewPEMProcessor(pemType string) (result *PEMProcessor) {
     })
 
     return &PEMProcessor{
+        name:             name,
         pemType:            pemType,
         header:             header,
         footer:             footer,
@@ -42,11 +45,15 @@ func NewPEMProcessor(pemType string) (result *PEMProcessor) {
     }
 }
 
-func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
+func (p *PEMProcessor) Name() string {
+    return p.name
+}
+
+func (p *PEMProcessor) FindInFileChange(fileChange *git.FileChange, log *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
 
     // Quick out
     var patchString string
-    patchString, err = context.PatchString()
+    patchString, err = fileChange.PatchString()
     if !strings.Contains(patchString, p.header) {
         return
     }
@@ -56,7 +63,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
     var startDiffNum int
 
     var diff *diffpkg.Diff
-    diff, err = context.Diff()
+    diff, err = fileChange.Diff()
     if err != nil {
         return
     }
@@ -101,7 +108,8 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                 }, &keyLines)
 
                 secret := p.buildKeyFromLines(keyLines)
-                result = append(result, &rule.FileChangeFinding{
+
+                result = append(result, &finder.Finding{
                     FileRange: &structures.FileRange{
                         StartLineNum:     startLineNum,
                         StartIndex:       0,
@@ -110,7 +118,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                         StartDiffLineNum: startDiffNum,
                         EndDiffLineNum:   diff.Line.LineNumDiff + 1,
                     },
-                    Secrets: []*rule.Secret{{Value: secret}},
+                    Secret: &finder.Secret{Value: secret},
                 })
 
                 if !areMoreLines {
@@ -149,7 +157,8 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                 keyLines = []string{}
                 areMoreLines := diff.WhileTrueCollectCode(func(line *diffpkg.Line) bool { return line.IsAdd }, &keyLines)
                 secret := p.buildKeyFromLines(keyLines)
-                result = append(result, &rule.FileChangeFinding{
+
+                result = append(result, &finder.Finding{
                     FileRange: &structures.FileRange{
                         StartLineNum:     startLineNum,
                         StartIndex:       0,
@@ -158,7 +167,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                         StartDiffLineNum: startDiffNum,
                         EndDiffLineNum:   diff.Line.LineNumDiff + 1,
                     },
-                    Secrets: []*rule.Secret{{Value: secret}},
+                    Secret: &finder.Secret{Value: secret},
                 })
 
                 if !areMoreLines {
@@ -182,7 +191,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
             keyString := strings.ReplaceAll(matches[1], "\\n", "\n")
             secret := p.buildKey(keyString)
 
-            result = []*rule.FileChangeFinding{{
+            result = append(result, &finder.Finding{
                 FileRange: &structures.FileRange{
                     StartLineNum:     diff.Line.LineNumFile,
                     StartIndex:       0,
@@ -191,8 +200,8 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
                     StartDiffLineNum: diff.Line.LineNumDiff,
                     EndDiffLineNum:   diff.Line.LineNumDiff,
                 },
-                Secrets: []*rule.Secret{{Value: secret}},
-            }}
+                Secret: &finder.Secret{Value: secret},
+            })
 
             if ok := diff.Increment(); !ok {
                 break
@@ -210,7 +219,7 @@ func (p *PEMProcessor) FindInFileChange(context *rule.FileChangeContext, log *lo
     return
 }
 
-func (p *PEMProcessor) FindInLine(string, *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+func (p *PEMProcessor) FindInLine(string, *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
     return
 }
 

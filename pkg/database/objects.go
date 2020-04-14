@@ -22,15 +22,11 @@ type (
         AuthorFull  string
         AuthorEmail string
     }
-    SecretFinding struct {
-        ID        string
-        FindingID string
-        SecretID  string
-    }
     Finding struct {
         ID               string
         CommitID         string
-        Rule             string
+        SecretID         string
+        Processor        string
         Path             string
         StartLineNum     int
         StartIndex       int

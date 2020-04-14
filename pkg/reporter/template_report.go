@@ -138,7 +138,7 @@ func template_reportTemplate() string {
 		"            <table class=\"table table-sm findings\">\n" +
 		"                <tr>\n" +
 		"                    <th scope=\"col\" class=\"expander-col\"></th>\n" +
-		"                    <th scope=\"col\">Rule</th>\n" +
+		"                    <th scope=\"col\">Processor</th>\n" +
 		"                    <th scope=\"col\">Repo</th>\n" +
 		"                    <th scope=\"col\">Commit</th>\n" +
 		"                    <th scope=\"col\">File/Line</th>\n" +
@@ -150,7 +150,7 @@ func template_reportTemplate() string {
 		"                        <td class=\"expander\">\n" +
 		"                            <a href=\"javascript:\" class=\"material-icons\"></a>\n" +
 		"                        </td>\n" +
-		"                        <td>{{$finding.RuleName}}</td>\n" +
+		"                        <td>{{$finding.ProcessorName}}</td>\n" +
 		"                        <td>{{template \"link\" $finding.RepoFullLink}}</td>\n" +
 		"                        <td>{{template \"link\" $finding.CommitHashLinkShort}}</td>\n" +
 		"                        <td>{{template \"link\" $finding.FileLineLinkShort}}</td>\n" +
@@ -162,8 +162,8 @@ func template_reportTemplate() string {
 		"                        <td colspan=\"6\">\n" +
 		"                            <table class=\"table table-sm\">\n" +
 		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Rule</th>\n" +
-		"                                    <td>{{$finding.RuleName}}</td>\n" +
+		"                                    <th scope=\"row\">Processor</th>\n" +
+		"                                    <td>{{$finding.ProcessorName}}</td>\n" +
 		"                                </tr>\n" +
 		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Repo</th>\n" +
@@ -198,7 +198,7 @@ func template_reportTemplate() string {
 		"                                        <pre><code>Repo = \"infrastructure\"\n" +
 		"Commit = \"{{$finding.CommitHash}}\"\n" +
 		"Path = \"{{$finding.FilePath}}\"\n" +
-		"Rule = \"{{$finding.RuleName}}\"\n" +
+		"Processor = \"{{$finding.ProcessorName}}\"\n" +
 		"DiffLine = {{$finding.StartLineNumDiff}}</code></pre>\n" +
 		"                                        </td>\n" +
 		"                                    </tr>\n" +
