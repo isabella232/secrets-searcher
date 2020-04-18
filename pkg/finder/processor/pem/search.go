@@ -602,7 +602,7 @@ func (s *search) parseX509PEMString(keyString string) (result crypto.PrivateKey,
         }
         result = rsaKey
     default:
-        log.Warnf("unsupported block type", block.Type)
+        log.Warnf("unsupported block type: %s", block.Type)
     }
 
     return
