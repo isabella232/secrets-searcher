@@ -67,6 +67,11 @@ func WithMessagef(err error, format string, args ...interface{}) error {
     return errorsOrig.WithMessagef(err, format, args...)
 }
 
+// Wrapped
+func Cause(err error) error {
+    return errorsOrig.Cause(err)
+}
+
 // Log error and return logrus.Entry object
 func ErrorLog(log *logrus.Logger, err error) *logrus.Entry {
     stacktrace := StackTraceString(err)

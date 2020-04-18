@@ -2,7 +2,6 @@ package database
 
 import (
     "encoding/json"
-    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "sort"
     "strings"
@@ -15,7 +14,7 @@ func (d *Database) GetRepo(id string) (result *Repo, err error) {
     return
 }
 
-func (d *Database) GetRepos() (result []*Repo, err error) {
+func (d *Database) GetRepos() (result Repos, err error) {
     lines, err := d.readAll(RepoTable)
     if err != nil {
         return
@@ -32,8 +31,8 @@ func (d *Database) GetRepos() (result []*Repo, err error) {
     return
 }
 
-func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Repo, err error) {
-    var repos []*Repo
+func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result Repos, err error) {
+    var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
         return
@@ -48,30 +47,30 @@ func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Re
     return
 }
 
-func (d *Database) GetReposSorted() (result []*Repo, err error) {
+func (d *Database) GetReposSorted() (result Repos, err error) {
     result, err = d.GetRepos()
     if err != nil {
         return
     }
 
-    d.sortRepos(result)
+    d.SortRepos(result)
 
     return
 }
 
-func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result []*Repo, err error) {
+func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result Repos, err error) {
     result, err = d.GetReposFiltered(repoFilter)
     if err != nil {
         return
     }
 
-    d.sortRepos(result)
+    d.SortRepos(result)
 
     return
 }
 
 func (d *Database) GetRepoByName(name string) (result *Repo, err error) {
-    var repos []*Repo
+    var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
         return
@@ -97,10 +96,8 @@ func (d *Database) DeleteRepo(id string) (err error) {
     return
 }
 
-func (d *Database) sortRepos(objs []*Repo) {
-    sort.Slice(objs, func(i, j int) bool {
-        return strings.ToLower(objs[i].Name) < strings.ToLower(objs[j].Name)
-    })
+func (d *Database) SortRepos(objs Repos) {
+    sort.Slice(objs, func(i, j int) bool { return strings.ToLower(objs[i].Name) < strings.ToLower(objs[j].Name) })
 }
 
 // Commit
@@ -110,7 +107,7 @@ func (d *Database) GetCommit(id string) (result *Commit, err error) {
     return
 }
 
-func (d *Database) GetCommits() (result []*Commit, err error) {
+func (d *Database) GetCommits() (result Commits, err error) {
     lines, err := d.readAll(CommitTable)
     if err != nil {
         return
@@ -128,17 +125,23 @@ func (d *Database) GetCommits() (result []*Commit, err error) {
     return
 }
 
-func (d *Database) WriteCommitIfNotExists(obj *Commit) (err error) {
-    var exists bool
-    exists, err = d.exists(CommitTable, obj.ID)
+func (d *Database) GetCommitsSortedByDate() (result Commits, err error) {
+    result, err = d.GetCommits()
     if err != nil {
         return
     }
 
-    if !exists {
-        err = d.write(CommitTable, obj.ID, obj)
-    }
+    d.SortCommitsByDate(result)
 
+    return
+}
+
+func (d *Database) SortCommitsByDate(objs Commits) {
+    sort.Slice(objs, func(i, j int) bool { return objs[i].Date.Before(objs[j].Date) })
+}
+
+func (d *Database) WriteCommitIfNotExists(obj *Commit) (created bool, err error) {
+    created, err = d.writeIfNotExists(CommitTable, obj.ID, obj)
     return
 }
 
@@ -149,7 +152,7 @@ func (d *Database) GetFinding(id string) (result *Finding, err error) {
     return
 }
 
-func (d *Database) GetFindings() (result []*Finding, err error) {
+func (d *Database) GetFindings() (result Findings, err error) {
     lines, err := d.readAll(FindingTable)
     if err != nil {
         return
@@ -172,28 +175,93 @@ func (d *Database) WriteFinding(obj *Finding) (err error) {
     return
 }
 
-func (d *Database) GetFindingsGroupedBySecret() (result map[*Secret][]*Finding, err error) {
-    var secretIndex map[string]*Secret
-    secretIndex, err = d.GetSecretsWithIDIndex()
+func (d *Database) GetFindingsWithIDIndex() (result map[string]*Finding, err error) {
+    var objs Findings
+    objs, err = d.GetFindings()
     if err != nil {
         return
     }
 
-    var findings []*Finding
-    findings, err = d.GetFindings()
+    result = map[string]*Finding{}
+    for _, obj := range objs {
+        result[obj.ID] = obj
+    }
+
+    return
+}
+
+func (d *Database) GetFindingsSortedGroupedBySecretID() (result FindingGroups, err error) {
+    var objs Findings
+    objs, err = d.GetFindings()
     if err != nil {
         return
     }
 
-    result = make(map[*Secret][]*Finding)
+    result = make(FindingGroups)
 
-    for _, finding := range findings {
-        secret, ok := secretIndex[finding.SecretID]
-        if !ok {
-            err = errors.Errorv("no secret found for secret ID", finding.SecretID)
+    for _, obj := range objs {
+        result[obj.SecretID] = append(result[obj.SecretID], obj)
+    }
+
+    return
+}
+
+// Finding extras
+
+func (d *Database) GetFindingExtra(id string) (result *FindingExtra, err error) {
+    err = d.read(FindingExtrasTable, id, &result)
+    return
+}
+
+func (d *Database) GetFindingExtras() (result FindingExtras, err error) {
+    lines, err := d.readAll(FindingExtrasTable)
+    if err != nil {
+        return
+    }
+
+    for _, line := range lines {
+        var obj *FindingExtra
+        if err = json.Unmarshal([]byte(line), &obj); err != nil {
             return
         }
-        result[secret] = append(result[secret], finding)
+
+        result = append(result, obj)
+    }
+
+    return
+}
+
+func (d *Database) GetFindingExtrasSorted() (result FindingExtras, err error) {
+    result, err = d.GetFindingExtras()
+    if err != nil {
+        return
+    }
+
+    d.SortFindingExtras(result)
+
+    return
+}
+
+func (d *Database) SortFindingExtras(objs FindingExtras) {
+    sort.Slice(objs, func(i, j int) bool { return objs[i].Order < objs[j].Order })
+}
+
+func (d *Database) WriteFindingExtra(obj *FindingExtra) (err error) {
+    err = d.write(FindingExtrasTable, obj.ID, obj)
+    return
+}
+
+func (d *Database) GetFindingExtrasSortedGroupedByFindingID() (result FindingExtraGroups, err error) {
+    var objs FindingExtras
+    objs, err = d.GetFindingExtrasSorted()
+    if err != nil {
+        return
+    }
+
+    result = make(FindingExtraGroups)
+
+    for _, obj := range objs {
+        result[obj.FindingID] = append(result[obj.FindingID], obj)
     }
 
     return
@@ -206,7 +274,7 @@ func (d *Database) GetSecret(id string) (result *Secret, err error) {
     return
 }
 
-func (d *Database) GetSecrets() (result []*Secret, err error) {
+func (d *Database) GetSecrets() (result Secrets, err error) {
     lines, err := d.readAll(SecretTable)
     if err != nil {
         return
@@ -224,7 +292,7 @@ func (d *Database) GetSecrets() (result []*Secret, err error) {
     return
 }
 
-func (d *Database) GetSecretsSorted() (result []*Secret, err error) {
+func (d *Database) GetSecretsSorted() (result Secrets, err error) {
     result, err = d.GetSecrets()
     if err != nil {
         return
@@ -235,18 +303,18 @@ func (d *Database) GetSecretsSorted() (result []*Secret, err error) {
     return
 }
 
-func (d *Database) SortSecrets(objs []*Secret) {
+func (d *Database) SortSecrets(objs Secrets) {
     sort.Slice(objs, func(i, j int) bool { return objs[i].ID < objs[j].ID })
 }
 
-func (d *Database) GetSecretsWithIDIndex() (result map[string]*Secret, err error) {
-    var secrets []*Secret
+func (d *Database) GetSecretsSortedIndexed() (result SecretIndex, err error) {
+    var secrets Secrets
     secrets, err = d.GetSecretsSorted()
     if err != nil {
         return
     }
 
-    result = map[string]*Secret{}
+    result = SecretIndex{}
     for _, secret := range secrets {
         result[secret.ID] = secret
     }
@@ -259,15 +327,69 @@ func (d *Database) WriteSecret(obj *Secret) (err error) {
     return
 }
 
-func (d *Database) WriteSecretIfNotExists(obj *Secret) (err error) {
-    var exists bool
-    exists, err = d.exists(SecretTable, obj.ID)
+func (d *Database) WriteSecretIfNotExists(obj *Secret) (created bool, err error) {
+    created, err = d.writeIfNotExists(SecretTable, obj.ID, obj)
+    return
+}
+
+// Secret extras
+
+func (d *Database) GetSecretExtra(id string) (result *SecretExtra, err error) {
+    err = d.read(SecretExtrasTable, id, &result)
+    return
+}
+
+func (d *Database) GetSecretExtras() (result SecretExtras, err error) {
+    lines, err := d.readAll(SecretExtrasTable)
     if err != nil {
         return
     }
 
-    if !exists {
-        err = d.write(SecretTable, obj.ID, obj)
+    for _, line := range lines {
+        var obj *SecretExtra
+        if err = json.Unmarshal([]byte(line), &obj); err != nil {
+            return
+        }
+
+        result = append(result, obj)
+    }
+
+    return
+}
+
+func (d *Database) GetSecretExtrasSorted() (result SecretExtras, err error) {
+    result, err = d.GetSecretExtras()
+    if err != nil {
+        return
+    }
+
+    d.SortSecretExtras(result)
+
+    return
+}
+
+func (d *Database) SortSecretExtras(objs SecretExtras) {
+    sort.Slice(objs, func(i, j int) bool {
+        return objs[i].Order < objs[j].Order
+    })
+}
+
+func (d *Database) WriteSecretExtra(obj *SecretExtra) (err error) {
+    err = d.write(SecretExtrasTable, obj.ID, obj)
+    return
+}
+
+func (d *Database) GetSecretExtrasSortedGroupedBySecretID() (result SecretExtraGroups, err error) {
+    var objs SecretExtras
+    objs, err = d.GetSecretExtrasSorted()
+    if err != nil {
+        return
+    }
+
+    result = make(SecretExtraGroups)
+
+    for _, obj := range objs {
+        result[obj.SecretID] = append(result[obj.SecretID], obj)
     }
 
     return

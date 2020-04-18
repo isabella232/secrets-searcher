@@ -2,9 +2,13 @@ package cmd
 
 import (
     "fmt"
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/source_provider"
-    "github.com/pantheon-systems/search-secrets/pkg/dev"
+    "github.com/pantheon-systems/search-secrets/pkg/app/source_provider"
+    "github.com/pantheon-systems/search-secrets/pkg/dbug"
     "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/finder/processor/entropy"
+    "github.com/pantheon-systems/search-secrets/pkg/finder/processor/pem"
+    "github.com/pantheon-systems/search-secrets/pkg/finder/processor/regex"
+    "github.com/pantheon-systems/search-secrets/pkg/finder/processor/url"
     "os"
     "path/filepath"
     "regexp"
@@ -13,9 +17,8 @@ import (
 
     "github.com/mitchellh/mapstructure"
     apppkg "github.com/pantheon-systems/search-secrets/pkg/app"
-    "github.com/pantheon-systems/search-secrets/pkg/database/enum/processor_type"
+    "github.com/pantheon-systems/search-secrets/pkg/app/processor_type"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/processor"
     "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
@@ -54,7 +57,6 @@ type (
         OutputDir   string `mapstructure:"output-dir"`
         NonZero     bool   `mapstructure:"non-zero"`
         Interactive bool   `mapstructure:"interactive"`
-        DevEnabled  bool   `mapstructure:"dev"`
 
         // Source config
         SkipSourcePrep bool         `mapstructure:"skip-source-prep"`
@@ -70,7 +72,15 @@ type (
         WhitelistSecretDir string            `mapstructure:"whitelist-secret-dir"`
 
         // Reporting config
-        SkipReportSecrets bool `mapstructure:"skip-report-secrets"`
+        SkipReportSecrets       bool `mapstructure:"skip-report-secrets"`
+        EnableReportDebugOutput bool `mapstructure:"enable-report-debug-output"`
+
+        // Finder config
+        ChunkSize   int `mapstructure:"chunk-size"`
+        WorkerCount int `mapstructure:"worker-count"`
+
+        // Dev config
+        Dbug dbug.Config `mapstructure:"dbug"`
     }
 
     // Source config
@@ -133,10 +143,9 @@ func init() {
 }
 
 func runApp(*cobra.Command, []string) {
-    dev.Enabled = cfg.DevEnabled
-    if dev.Enabled && dev.Repo != "" {
+    dbug.Cnf = cfg.Dbug
+    if dbug.Cnf.Enabled {
         log.Warn("DEV MODE ENABLED")
-        cfg.Source.Repos = []string{dev.Repo}
     }
 
     validateParameters()
@@ -164,17 +173,20 @@ func runApp(*cobra.Command, []string) {
     }
 
     app, err = apppkg.New(&apppkg.Config{
-        SkipSourcePrep:       cfg.SkipSourcePrep,
-        Interactive:          cfg.Interactive,
-        OutputDir:            cfg.OutputDir,
-        Refs:                 cfg.Refs,
-        Processors:           processors,
-        EarliestTime:         earliestTime,
-        LatestTime:           latestTime,
-        WhitelistPath:        whitelistPath,
-        WhitelistSecretIDSet: whitelistSecretIDSet,
-        SkipReportSecrets:    cfg.SkipReportSecrets,
-        AppURL:               appURL,
+        SkipSourcePrep:          cfg.SkipSourcePrep,
+        Interactive:             cfg.Interactive,
+        OutputDir:               cfg.OutputDir,
+        Refs:                    cfg.Refs,
+        Processors:              processors,
+        EarliestTime:            earliestTime,
+        LatestTime:              latestTime,
+        WhitelistPath:           whitelistPath,
+        WhitelistSecretIDSet:    whitelistSecretIDSet,
+        SkipReportSecrets:       cfg.SkipReportSecrets,
+        AppURL:                  appURL,
+        EnableReportDebugOutput: cfg.EnableReportDebugOutput,
+        ChunkSize:               cfg.ChunkSize,
+        WorkerCount:             cfg.WorkerCount,
         SourceConfig: &apppkg.SourceConfig{
             SourceProvider: cfg.Source.Provider,
             GithubToken:    cfg.Source.APIToken,
@@ -196,7 +208,7 @@ func runApp(*cobra.Command, []string) {
         log.Fatal(errors.WithMessage(err, "unable to execute app"))
     }
 
-    if cfg.NonZero && app.SecretCount > 0 {
+    if cfg.NonZero && app.Stats.SecretsFoundCount > 0 {
         exitCode = 3
     }
 }
@@ -232,16 +244,21 @@ func initArgs() {
         "interactive",
         true,
         "If false, progress bars will not appear, only log messages.")
-    flags.Bool(
-        "dev",
-        false,
-        "If true, certain development features are enabled.")
 
     // Source config
     flags.String(
         "source.api-token",
         "",
         "API token to use when querying for a list of repos to clone for the search.")
+
+    flags.Int(
+        "chunk-size",
+        500,
+        "Number of commits each worker handles.")
+    flags.Int(
+        "worker-count",
+        8,
+        "How many concurrent search workers.")
 
     // Finder config
     flags.StringSlice(
@@ -282,6 +299,16 @@ func initArgs() {
         "skip-report-secrets",
         false,
         "If true, the `./output/report/secret-[SECRETID].yaml` files will not be generated.")
+    flags.Bool(
+        "enable-report-debug-output",
+        false,
+        "If true, the report will include some debug output (works even if `dbug.enabled` is false).")
+
+    // Debug config
+    flags.Bool(
+        "dbug.enabled",
+        false,
+        "If true, certain development features are enabled.")
 }
 
 func initLogging() {
@@ -364,6 +391,9 @@ func validateParameters() {
     validationAssertTrue(cfg.LogLevel != "", "log-level", "")
     validationAssertTrue(cfg.OutputDir != "", "output-dir", "")
 
+    validationAssertTrue(cfg.ChunkSize > 0, "chunk-size", "")
+    validationAssertTrue(cfg.WorkerCount > 0, "worker-count", "")
+
     // `source` config
     switch cfg.Source.Provider {
     case source_provider.GitHub{}.New().Value():
@@ -404,6 +434,8 @@ func validateParameters() {
             validationAssertTrue(conf.RegexString != "", configNameBase+"regex", "")
         case processor_type.PEM{}.New().Value():
             validationAssertTrue(conf.PEMType != "", configNameBase+"pem-type", "")
+            validationAssertTrue(pem.NewPEMTypeFromValue(conf.PEMType) != nil, configNameBase+"pem-type",
+                "unknown PEM type in parameter `%s`")
         case processor_type.Entropy{}.New().Value():
             entConfNameBase := configNameBase + "entropy."
             validationAssertTrue(conf.EntropyConfig.Charset != "", entConfNameBase+"charset", "")
@@ -456,14 +488,15 @@ func buildProcessor(procConf processorConfig) (result finder.Processor, err erro
 
     switch procConf.Processor {
     case processor_type.URL{}.New().Value():
-        result = processor.NewURLProcessor(procConf.Name, &whitelistCodeRes)
+        result = url.NewProcessor(procConf.Name, &whitelistCodeRes)
     case processor_type.Regex{}.New().Value():
-        result, err = processor.NewRegexProcessor(procConf.Name, procConf.RegexString, &whitelistCodeRes)
+        result, err = regex.NewProcessor(procConf.Name, procConf.RegexString, &whitelistCodeRes)
     case processor_type.PEM{}.New().Value():
-        result = processor.NewPEMProcessor(procConf.Name, procConf.PEMType)
+        pemType := pem.NewPEMTypeFromValue(procConf.PEMType)
+        result = pem.NewProcessor(procConf.Name, pemType)
     case processor_type.Entropy{}.New().Value():
         ec := procConf.EntropyConfig
-        result = processor.NewEntropyProcessor(procConf.Name, ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
+        result = entropy.NewProcessor(procConf.Name, ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
     default:
         err = errors.Errorv("unknown search type", procConf.Processor)
     }

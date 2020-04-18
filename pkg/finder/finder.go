@@ -1,135 +1,113 @@
 package finder
 
 import (
+    "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/git"
+    gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/interact"
+    "github.com/pantheon-systems/search-secrets/pkg/interact/progress"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirsean/go-pool"
     "github.com/sirupsen/logrus"
     "runtime"
-    "strings"
-    "time"
 )
 
 type (
     Finder struct {
-        repoFilter           *structures.Filter
-        refFilter            *structures.Filter
-        processors           []Processor
-        earliestTime         time.Time
-        latestTime           time.Time
-        whitelistPath        structures.RegexpSet
-        whitelistSecretIDSet structures.Set
-        secretTracker        structures.Set
-        interact             interact.Interactish
-        db                   *database.Database
-        log                  *logrus.Logger
+        Stats            *Stats
+        chunkSize        int
+        workerCount      int
+        processors       []Processor
+        fileChangeFilter *gitpkg.FileChangeFilter
+        interact         interact.Interactish
+        writer           *Writer
+        payloadSet       *payloadSet
+        db               *database.Database
+        log              *logrus.Entry
     }
-    Processor interface {
-        FindInFileChange(fileChange *git.FileChange, log *logrus.Entry) (result []*Finding, ignore []*structures.FileRange, err error)
-        FindInLine(line string, log *logrus.Entry) (result []*FindingInLine, ignore []*structures.LineRange, err error)
-        Name() string
-    }
-    Finding struct {
-        ProcessorName string
-        FileRange     *structures.FileRange
-        Secret        *Secret
-    }
-    FindingInLine struct {
-        ProcessorName string
-        LineRange     *structures.LineRange
-        Secret        *Secret
-    }
-    Secret struct {
-        Value   string
-        Decoded string
-    }
-    result struct {
-        RepoID         string
-        Commit         *git.Commit
-        FindingResults []*findingResult
-    }
-    findingResult struct {
-        FileChange *git.FileChange
-        Findings   []*Finding
+    Stats struct {
+        CommitsSearchedCount int64
+        SecretsFoundCount    int64
     }
 )
 
-func New(repoFilter *structures.Filter, refFilter *structures.Filter, processors []Processor, earliestTime, latestTime time.Time, whitelistPath structures.RegexpSet, whitelistSecretIDSet structures.Set, interact interact.Interactish, db *database.Database, log *logrus.Logger) *Finder {
+func New(repoFilter *structures.Filter, commitFilter *gitpkg.CommitFilter, fileChangeFilter *gitpkg.FileChangeFilter, chunkSize, workerCount int, processors []Processor, whitelistSecretIDSet structures.Set, interact interact.Interactish, db *database.Database, log *logrus.Entry) *Finder {
+    git := gitpkg.New(log)
+    payloadSet := newPayloadSet(git, repoFilter, commitFilter, workerCount, chunkSize, db, log)
+    writer := newWriter(whitelistSecretIDSet, db, log)
+
     return &Finder{
-        repoFilter:           repoFilter,
-        refFilter:            refFilter,
-        processors:           processors,
-        earliestTime:         earliestTime,
-        latestTime:           latestTime,
-        whitelistPath:        whitelistPath,
-        whitelistSecretIDSet: whitelistSecretIDSet,
-        secretTracker:        structures.NewSet(nil),
-        interact:             interact,
-        db:                   db,
-        log:                  log,
+        Stats:            &Stats{},
+        chunkSize:        chunkSize,
+        workerCount:      workerCount,
+        fileChangeFilter: fileChangeFilter,
+        processors:       processors,
+        interact:         interact,
+        writer:           writer,
+        payloadSet:       payloadSet,
+        db:               db,
+        log:              log,
     }
 }
 
-func (f *Finder) Search() (secretCount int, err error) {
-    for _, tableName := range []string{database.CommitTable, database.FindingTable, database.SecretTable, database.SecretFindingTable} {
+func (f *Finder) Search() (err error) {
+    f.Stats = &Stats{}
+
+    for _, tableName := range []string{database.CommitTable, database.FindingTable, database.SecretTable} {
         if f.db.TableExists(tableName) {
             err = errors.Errorv("one or more finder-specific tables already exist, cannot prepare findings", tableName)
             return
         }
     }
 
-    var repos []*database.Repo
-    if f.repoFilter != nil {
-        repos, err = f.db.GetReposFilteredSorted(f.repoFilter)
-    } else {
-        repos, err = f.db.GetReposSorted()
-    }
+    var payloads []*payload
+    var repoCounts map[string]int
+    payloads, repoCounts, err = f.payloadSet.buildPayloads()
     if err != nil {
         return
     }
 
+    var prog = f.interact.NewProgress()
+    bars := f.progressBars(prog, repoCounts)
+
     numCPU := runtime.NumCPU()
     runtime.GOMAXPROCS(numCPU)
 
-    out := make(chan *result)
+    out := make(chan *workerResult)
 
-    pl := pool.NewPool(len(repos), numCPU*2)
+    pl := pool.NewPool(len(payloads), f.workerCount)
     pl.Start()
 
-    prog := f.interact.NewProgress()
-
-    for _, repo := range repos {
-        log := f.log.WithField("repo", repo.Name)
-
-        log.Debug("adding find worker for repo")
-        pl.Add(NewWorker(
-            repo,
-            f.processors,
-            &git.CommitFilter{
-                EarliestTime:                f.earliestTime,
-                LatestTime:                  f.latestTime,
-                ExcludeMergeCommits:         true,
-                ExcludeCommitsWithNoParents: true,
-            },
-            &git.FileChangeFilter{
-                ExcludeFileDeletions:         true,
-                ExcludeMatchingPaths:         f.whitelistPath,
-                ExcludeBinaryOrEmpty:         true,
-                ExcludeOnesWithNoCodeChanges: true,
-            },
-            prog,
-            out,
-            f.db,
-            f.log.WithField("repo", repo.Name,
-            ),
-        ))
-        log.Debug("worker added")
-    }
-
     go func() {
+        for i, payload := range payloads {
+            var bar *progress.Bar
+            if bars != nil {
+                bar = bars[payload.repo.Name]
+            }
+
+            workerName := fmt.Sprintf("%s-%d", payload.repo.Name, i)
+
+            workerLog := f.log.
+                WithField("worker", workerName).
+                WithField("commits", payload.commitsLen)
+
+            workerLog.Debugf("adding finder worker for repo")
+
+            worker := NewWorker(
+                workerName,
+                payload,
+                f.processors,
+                f.fileChangeFilter,
+                bar,
+                out,
+                f.db,
+                workerLog,
+            )
+
+            pl.Add(worker)
+        }
+
         pl.Close()
         if prog != nil {
             prog.Wait()
@@ -142,171 +120,32 @@ func (f *Finder) Search() (secretCount int, err error) {
         log := f.log.WithField("repo", dr.RepoID)
         log.Debug("received finding from channel")
 
-        if err = f.persistResult(dr); err != nil {
-            errors.ErrorLog(f.log, errors.WithMessage(err, "error processing commit"))
+        if err = f.writer.persistResult(dr); err != nil {
+            errors.ErrorLogForEntry(f.log, errors.WithMessage(err, "error processing commit"))
             continue
         }
     }
 
-    secretCount = f.secretTracker.Len()
-    f.log.Infof("completed, found %d secrets", secretCount)
+    // Stats
+    for _, commitsLen := range repoCounts {
+        f.Stats.CommitsSearchedCount += int64(commitsLen)
+    }
+    f.Stats.SecretsFoundCount = int64(f.writer.secretTracker.Len())
+
+    f.log.Infof("completed search")
 
     return
 }
 
-func (f *Finder) persistResult(result *result) (err error) {
-    dbCommit, dbFindings, dbSecrets, ok := f.buildDBObjects(result)
-    if !ok {
+func (f *Finder) progressBars(prog *progress.Progress, repoCounts map[string]int) (result map[string]*progress.Bar) {
+    if prog == nil {
         return
     }
 
-    if err = f.db.WriteCommitIfNotExists(dbCommit); err != nil {
-        return
+    result = make(map[string]*progress.Bar, len(repoCounts))
+    for repoName, commitCount := range repoCounts {
+        barName := fmt.Sprintf("%s", repoName)
+        result[repoName] = prog.AddBar(barName, commitCount, "search of %s is complete")
     }
-    for _, dbSecret := range dbSecrets {
-        if err = f.db.WriteSecretIfNotExists(dbSecret); err != nil {
-            return
-        }
-    }
-    for _, dbFinding := range dbFindings {
-        if err = f.db.WriteFinding(dbFinding); err != nil {
-            return
-        }
-    }
-
     return
-}
-
-func (f *Finder) buildDBObjects(result *result) (dbCommit *database.Commit, dbFindings []*database.Finding, dbSecrets []*database.Secret, ok bool) {
-    var commit *database.Commit
-    var secrets []*database.Secret
-    var findings []*database.Finding
-
-    commit = f.buildDBCommit(result.Commit, result.RepoID)
-
-    log := f.log.WithFields(logrus.Fields{
-        "repo":       commit.RepoID,
-        "commitHash": commit.CommitHash,
-    })
-
-    for _, findingResult := range result.FindingResults {
-        for _, finding := range findingResult.Findings {
-            dbSecret := f.buildDBSecret(finding.Secret)
-
-            // Check whitelist
-            if f.whitelistSecretIDSet.Contains(dbSecret.ID) {
-                log.WithField("secret", dbSecret.ID).Debug("secret whitelisted by ID, skipping finding")
-                continue
-            }
-
-            dbFinding, findingErr := f.buildDBFinding(finding, result.Commit, findingResult.FileChange, dbSecret.ID, commit.ID)
-            if findingErr != nil {
-                errors.ErrorLogForEntry(log, findingErr).Error("unable to build finding object for database")
-                continue
-            }
-
-            secrets = append(secrets, dbSecret)
-            findings = append(findings, dbFinding)
-        }
-    }
-
-    if findings != nil {
-        dbCommit = commit
-        dbFindings = findings
-        dbSecrets = secrets
-        ok = true
-    }
-
-    return
-}
-
-func (f *Finder) buildDBCommit(commit *git.Commit, repoID string) *database.Commit {
-    return &database.Commit{
-        ID:          database.CreateHashID(repoID, commit.Hash),
-        RepoID:      repoID,
-        Commit:      commit.Message,
-        CommitHash:  commit.Hash,
-        Date:        commit.Time,
-        AuthorFull:  commit.AuthorFull,
-        AuthorEmail: commit.AuthorEmail,
-    }
-}
-
-func (f *Finder) buildDBSecret(secret *Secret) *database.Secret {
-    return &database.Secret{
-        ID:           database.CreateHashID(secret.Value),
-        Value:        secret.Value,
-        ValueDecoded: secret.Decoded,
-    }
-}
-
-func (f *Finder) buildDBFinding(finding *Finding, commit *git.Commit, fileChange *git.FileChange, secretID, commitID string) (result *database.Finding, err error) {
-    var fileContents string
-    fileContents, err = commit.FileContents(fileChange)
-    if err != nil {
-        return
-    }
-
-    // Get code and diff
-    code := getExcerpt(fileContents, finding.FileRange.StartLineNum, finding.FileRange.EndLineNum)
-    //diffExcerpt := getExcerpt(dfc.Diff, df.FileRange.StartDiffLineNum, df.FileRange.EndDiffLineNum)
-    diff := ""
-    const maxLength = 1000
-    if len(code) > maxLength {
-        code = code[:maxLength] + " [...]"
-    }
-
-    result = &database.Finding{
-        ID: database.CreateHashID(
-            commitID,
-            finding.ProcessorName,
-            fileChange.Path,
-            finding.FileRange.StartLineNum,
-            finding.FileRange.StartIndex,
-            finding.FileRange.EndLineNum,
-            finding.FileRange.EndIndex,
-        ),
-        CommitID:         commitID,
-        SecretID:         secretID,
-        Processor:        finding.ProcessorName,
-        Path:             fileChange.Path,
-        StartLineNum:     finding.FileRange.StartLineNum,
-        StartIndex:       finding.FileRange.StartIndex,
-        EndLineNum:       finding.FileRange.EndLineNum,
-        EndIndex:         finding.FileRange.EndIndex,
-        StartDiffLineNum: finding.FileRange.StartDiffLineNum,
-        EndDiffLineNum:   finding.FileRange.StartDiffLineNum,
-        Code:             code,
-        Diff:             diff,
-    }
-
-    return
-}
-
-func NewFindingFromLineFinding(finding *FindingInLine, fileLineNum, diffLineNum int) *Finding {
-    return &Finding{
-        ProcessorName: finding.ProcessorName,
-        FileRange:     structures.NewFileRangeFromLineRange(finding.LineRange, fileLineNum, diffLineNum),
-        Secret:        finding.Secret,
-    }
-}
-
-func getExcerpt(contents string, fromLineNum int, toLineNum int) (result string) {
-    lineNum := 1
-    theRest := contents
-    for {
-        index := strings.Index(theRest, "\n")
-        if index == -1 {
-            result += theRest
-            return
-        }
-        if lineNum >= fromLineNum {
-            result += theRest[:index+1]
-        }
-        theRest = theRest[index+1:]
-        lineNum += 1
-        if lineNum == toLineNum+1 {
-            return
-        }
-    }
 }

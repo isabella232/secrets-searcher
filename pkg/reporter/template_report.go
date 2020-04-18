@@ -10,9 +10,6 @@ package reporter
 // That string should be parsed by the functions of the golang's template package.
 func template_reportTemplate() string {
 	var tmpl = "{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}\n" +
-		"{{$devEnabled:=.DevEnabled}}\n" +
-		"{{define \"link\"}}<a href=\"{{.URL}}\" title=\"{{.Tooltip}}\" data-toggle=\"tooltip\"\n" +
-		"                    data-placement=\"top\">{{.Label}}</a>{{end}}\n" +
 		"<!DOCTYPE html>\n" +
 		"<html lang=\"en\">\n" +
 		"<head>\n" +
@@ -22,76 +19,7 @@ func template_reportTemplate() string {
 		"    <link href=\"https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css\" rel=\"stylesheet\"\n" +
 		"          integrity=\"sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh\" crossorigin=\"anonymous\">\n" +
 		"    <link href=\"https://fonts.googleapis.com/icon?family=Material+Icons\" rel=\"stylesheet\">\n" +
-		"    <style>\n" +
-		"        body {\n" +
-		"            font-size: 14px;\n" +
-		"        }\n" +
-		"\n" +
-		"        pre {\n" +
-		"            padding: 15px;\n" +
-		"            background-color: #cccccc;\n" +
-		"        }\n" +
-		"\n" +
-		"        .report-info {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret {\n" +
-		"            padding-top: 30px;\n" +
-		"            margin-bottom: 50px;\n" +
-		"            border-top: 3px solid #e9e9e9;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret > h3 {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret-value {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret-value > h4 {\n" +
-		"            font-size: 14px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .expander-col {\n" +
-		"            width: 40px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .expander a:hover {\n" +
-		"            text-decoration: none;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full {\n" +
-		"            display: table-row;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full.collapsed {\n" +
-		"            display: none;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full > th,\n" +
-		"        .finding-full > td {\n" +
-		"            background-color: #e9e9e9;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full > .expander-col {\n" +
-		"            background-color: #fff;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full > td {\n" +
-		"            padding: 0\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full table tr:first-child th,\n" +
-		"        .finding-full table tr:first-child td {\n" +
-		"            border-top-width: 0\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full table pre {\n" +
-		"            margin-bottom: 0\n" +
-		"        }\n" +
-		"    </style>\n" +
+		"    {{template \"styles\"}}\n" +
 		"</head>\n" +
 		"<body>\n" +
 		"<div class=\"container-fluid\">\n" +
@@ -124,15 +52,18 @@ func template_reportTemplate() string {
 		"            <h3>Secret {{$secret.ID}}</h3>\n" +
 		"\n" +
 		"            <div class=\"secret-value\">\n" +
-		"                <h4>Value</h4>\n" +
 		"                <pre><code>{{$secret.Value}}</code></pre>\n" +
 		"            </div>\n" +
 		"\n" +
-		"            {{if $secret.ValueDecoded}}\n" +
-		"                <div class=\"secret-value secret-value-decoded\">\n" +
-		"                    <h4>Decoded</h4>\n" +
-		"                    <pre><code>{{$secret.ValueDecoded}}</code></pre>\n" +
-		"                </div>\n" +
+		"            {{if $secret.Extras}}\n" +
+		"                <table class=\"table table-sm details\">\n" +
+		"                    {{range $, $extra := $secret.Extras}}\n" +
+		"                        <tr>\n" +
+		"                            <th scope=\"row\">{{$extra.Header}}</th>\n" +
+		"                            <td>{{template \"extra\" $extra}}</td>\n" +
+		"                        </tr>\n" +
+		"                    {{end}}\n" +
+		"                </table>\n" +
 		"            {{end}}\n" +
 		"\n" +
 		"            <table class=\"table table-sm findings\">\n" +
@@ -141,11 +72,11 @@ func template_reportTemplate() string {
 		"                    <th scope=\"col\">Processor</th>\n" +
 		"                    <th scope=\"col\">Repo</th>\n" +
 		"                    <th scope=\"col\">Commit</th>\n" +
-		"                    <th scope=\"col\">File/Line</th>\n" +
 		"                    <th scope=\"col\">Date</th>\n" +
+		"                    <th scope=\"col\">File/Line</th>\n" +
 		"                    <th scope=\"col\">Author</th>\n" +
 		"                </tr>\n" +
-		"                {{range $, $finding := .Findings}}\n" +
+		"                {{range $, $finding := $secret.Findings}}\n" +
 		"                    <tr class=\"finding\">\n" +
 		"                        <td class=\"expander\">\n" +
 		"                            <a href=\"javascript:\" class=\"material-icons\"></a>\n" +
@@ -160,7 +91,7 @@ func template_reportTemplate() string {
 		"                    <tr class=\"finding-full collapsed\">\n" +
 		"                        <td class=\"expander-col\"></td>\n" +
 		"                        <td colspan=\"6\">\n" +
-		"                            <table class=\"table table-sm\">\n" +
+		"                            <table class=\"table table-sm details\">\n" +
 		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Processor</th>\n" +
 		"                                    <td>{{$finding.ProcessorName}}</td>\n" +
@@ -174,12 +105,12 @@ func template_reportTemplate() string {
 		"                                    <td>{{template \"link\" $finding.CommitHashLink}}</td>\n" +
 		"                                </tr>\n" +
 		"                                <tr>\n" +
-		"                                    <th scope=\"row\">File/Line</th>\n" +
-		"                                    <td>{{template \"link\" $finding.FileLineLink}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Date</th>\n" +
 		"                                    <td>{{$finding.CommitDate.Format \"01/02/2006 15:04:05\"}}</td>\n" +
+		"                                </tr>\n" +
+		"                                <tr>\n" +
+		"                                    <th scope=\"row\">File</th>\n" +
+		"                                    <td>{{template \"link\" $finding.FileLineLink}}</td>\n" +
 		"                                </tr>\n" +
 		"                                <tr>\n" +
 		"                                    <th scope=\"row\">Author</th>\n" +
@@ -191,19 +122,12 @@ func template_reportTemplate() string {
 		"                                        <pre><code>{{ $finding.CodeTrimmed }}</code></pre>\n" +
 		"                                    </td>\n" +
 		"                                </tr>\n" +
-		"                                {{if $devEnabled}}\n" +
+		"                                {{range $, $extra := $finding.Extras}}\n" +
 		"                                    <tr>\n" +
-		"                                        <th scope=\"row\">Dev code</th>\n" +
-		"                                        <td>\n" +
-		"                                        <pre><code>Repo = \"infrastructure\"\n" +
-		"Commit = \"{{$finding.CommitHash}}\"\n" +
-		"Path = \"{{$finding.FilePath}}\"\n" +
-		"Processor = \"{{$finding.ProcessorName}}\"\n" +
-		"DiffLine = {{$finding.StartLineNumDiff}}</code></pre>\n" +
-		"                                        </td>\n" +
+		"                                        <th scope=\"row\">{{$extra.Header}}</th>\n" +
+		"                                        <td>{{template \"extra\" $extra}}</td>\n" +
 		"                                    </tr>\n" +
 		"                                {{end}}\n" +
-		"\n" +
 		"                            </table>\n" +
 		"                        </td>\n" +
 		"                    </tr>\n" +
@@ -248,6 +172,90 @@ func template_reportTemplate() string {
 		"</script>\n" +
 		"</body>\n" +
 		"</html>\n" +
+		"\n" +
+		"{{define \"styles\"}}\n" +
+		"    <style>\n" +
+		"        body {\n" +
+		"            font-size: 14px;\n" +
+		"        }\n" +
+		"\n" +
+		"        pre {\n" +
+		"            padding: 15px;\n" +
+		"            background-color: #cccccc;\n" +
+		"        }\n" +
+		"\n" +
+		"        .report-info {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret {\n" +
+		"            padding-top: 30px;\n" +
+		"            margin-bottom: 50px;\n" +
+		"            border-top: 3px solid #e9e9e9;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret > h3 {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .secret-value {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .details {\n" +
+		"            background-color: #e9e9e9;\n" +
+		"        }\n" +
+		"\n" +
+		"        .details table pre {\n" +
+		"            margin-bottom: 0\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-col {\n" +
+		"            width: 40px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander a:hover {\n" +
+		"            text-decoration: none;\n" +
+		"        }\n" +
+		"\n" +
+		"\n" +
+		"        .finding-full {\n" +
+		"            display: table-row;\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full.collapsed {\n" +
+		"            display: none;\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full > td {\n" +
+		"            padding: 0\n" +
+		"        }\n" +
+		"\n" +
+		"        .finding-full table tr:first-child th,\n" +
+		"        .finding-full table tr:first-child td {\n" +
+		"            border-top-width: 0\n" +
+		"        }\n" +
+		"    </style>\n" +
+		"{{end}}\n" +
+		"\n" +
+		"{{define \"link\"}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.linkData*/ -}}\n" +
+		"    <a href=\"{{.URL}}\" title=\"{{.Tooltip}}\" data-toggle=\"tooltip\" data-placement=\"top\">{{.Label}}</a>\n" +
+		"{{end}}\n" +
+		"\n" +
+		"{{define \"extra\"}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}\n" +
+		"    <div class=\"extra extra-{{.Key}}\">\n" +
+		"        {{if .Link}}\n" +
+		"            {{template \"link\" .Link}}\n" +
+		"        {{else if .Code}}\n" +
+		"            <pre><code>{{.Value}}</code></pre>\n" +
+		"        {{else}}\n" +
+		"            {{.Value}}\n" +
+		"        {{end}}\n" +
+		"    </div>\n" +
+		"{{end}}\n" +
+		"\n" +
 		""
 	return tmpl
 }

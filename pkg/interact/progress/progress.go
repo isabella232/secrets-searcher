@@ -1,6 +1,7 @@
 package progress
 
 import (
+    "github.com/sirupsen/logrus"
     "github.com/vbauerster/mpb/v5"
 )
 
@@ -9,6 +10,7 @@ type (
         uiProgress *mpb.Progress
         logWriter  LogWriter
         started    bool
+        log        *logrus.Entry
     }
     LogWriter interface {
         Reset()
@@ -16,20 +18,28 @@ type (
     }
 )
 
-func New(logWriter LogWriter) *Progress {
+func New(logWriter LogWriter, log *logrus.Entry) *Progress {
     uiProgress := mpb.New(mpb.PopCompletedMode())
 
     return &Progress{
         uiProgress: uiProgress,
         logWriter:  logWriter,
+        log:        log,
     }
 }
 
-func (p *Progress) AddBar(barName string, total int) *Bar {
+func (p *Progress) AddBar(barName string, total int, completedMessage string) *Bar {
     if p.logWriter != nil {
         p.logWriter.DisableStdout()
     }
-    return NewBar(p, barName, total)
+    return newBar(p, barName, total, completedMessage, p.log)
+}
+
+func (p *Progress) AddSpinner(barName string) *Spinner {
+    if p.logWriter != nil {
+        p.logWriter.DisableStdout()
+    }
+    return NewSpinner(p, barName)
 }
 
 func (p *Progress) Add(total int64, filler mpb.BarFiller, options ...mpb.BarOption) *mpb.Bar {
@@ -57,11 +67,4 @@ func (p *Progress) Wait() {
     if p.logWriter != nil {
         p.logWriter.Reset()
     }
-}
-
-func (p *Progress) AddSpinner(barName string) *Spinner {
-    if p.logWriter != nil {
-        p.logWriter.DisableStdout()
-    }
-    return NewSpinner(p, barName)
 }

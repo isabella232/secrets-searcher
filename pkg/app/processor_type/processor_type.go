@@ -19,18 +19,6 @@ func (eb processorTypeEnumBase) Value() string { return eb.value }
 // needs to be overriden by inheriting types
 func (eb processorTypeEnumBase) String() string { return "" }
 
-// URL is the enum type for 'valueURL' value
-type URL struct{ processorTypeEnumBase }
-
-// New is the constructor for a brand new ProcessorTypeEnum with value 'valueURL'
-func (URL) New() ProcessorTypeEnum { return URL{processorTypeEnumBase{valueURL}} }
-
-// String returns always "URL" for this enum type
-func (URL) String() string { return "URL" }
-
-// uniqueProcessorTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (URL) uniqueProcessorTypeMethod() {}
-
 // Regex is the enum type for 'valueRegex' value
 type Regex struct{ processorTypeEnumBase }
 
@@ -67,11 +55,23 @@ func (Entropy) String() string { return "Entropy" }
 // uniqueProcessorTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (Entropy) uniqueProcessorTypeMethod() {}
 
+// URL is the enum type for 'valueURL' value
+type URL struct{ processorTypeEnumBase }
+
+// New is the constructor for a brand new ProcessorTypeEnum with value 'valueURL'
+func (URL) New() ProcessorTypeEnum { return URL{processorTypeEnumBase{valueURL}} }
+
+// String returns always "URL" for this enum type
+func (URL) String() string { return "URL" }
+
+// uniqueProcessorTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (URL) uniqueProcessorTypeMethod() {}
+
 var internalProcessorTypeEnumValues = []ProcessorTypeEnum{
-	URL{}.New(),
 	Regex{}.New(),
 	PEM{}.New(),
 	Entropy{}.New(),
+	URL{}.New(),
 }
 
 // ProcessorTypeEnumValues will return a slice of all allowed enum value types
@@ -80,14 +80,14 @@ func ProcessorTypeEnumValues() []ProcessorTypeEnum { return internalProcessorTyp
 // NewProcessorTypeFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewProcessorTypeFromValue(v string) (result ProcessorTypeEnum) {
 	switch v {
-	case valueURL:
-		result = URL{}.New()
 	case valueRegex:
 		result = Regex{}.New()
 	case valuePEM:
 		result = PEM{}.New()
 	case valueEntropy:
 		result = Entropy{}.New()
+	case valueURL:
+		result = URL{}.New()
 	}
 	return
 }

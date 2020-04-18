@@ -60,3 +60,11 @@ func (s Set) Len() (result int) {
     result = len(s.data)
     return
 }
+
+func (s Set) Equals(other Set) (result bool) {
+    return SlicesAreEqual(s.Values(), other.Values())
+}
+
+func (s Set) EqualsAfterBothSorted(other Set) (result bool) {
+    return s.Len() == other.Len() && SlicesAreEqualAfterSort(s.Values(), other.Values())
+}

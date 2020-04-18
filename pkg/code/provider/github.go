@@ -11,6 +11,7 @@ import (
 )
 
 type GithubProvider struct {
+    name         string
     client       *github.Client
     organization string
     repoFilter   *structures.Filter
@@ -18,18 +19,23 @@ type GithubProvider struct {
     log          *logrus.Logger
 }
 
-func NewGithubProvider(apiToken, organization string, repoFilter *structures.Filter, excludeForks bool, log *logrus.Logger) *GithubProvider {
+func NewGithubProvider(name, apiToken, organization string, repoFilter *structures.Filter, excludeForks bool, log *logrus.Logger) *GithubProvider {
     ctx := context.Background()
     tc := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: apiToken}))
     client := github.NewClient(tc)
 
     return &GithubProvider{
+        name:         name,
         client:       client,
         organization: organization,
         repoFilter:   repoFilter,
         excludeForks: excludeForks,
         log:          log,
     }
+}
+
+func (p *GithubProvider) GetName() (result string) {
+    return p.name
 }
 
 func (p *GithubProvider) GetRepositories() (result []*code.RepoInfo, err error) {

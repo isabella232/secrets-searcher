@@ -31,10 +31,16 @@ func New(logFilePath string) (result *LogWriter, err error) {
 }
 
 func (l *LogWriter) Reset() {
+    l.mutex.Lock()
+    defer l.mutex.Unlock()
+
     l.writer = io.MultiWriter(l.logFile, os.Stdout)
 }
 
 func (l *LogWriter) DisableStdout() {
+    l.mutex.Lock()
+    defer l.mutex.Unlock()
+
     l.writer = l.logFile
 }
 

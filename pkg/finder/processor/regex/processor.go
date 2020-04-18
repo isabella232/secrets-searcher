@@ -1,4 +1,4 @@
-package processor
+package regex
 
 import (
     "github.com/pantheon-systems/search-secrets/pkg/finder"
@@ -8,20 +8,20 @@ import (
     "regexp"
 )
 
-type RegexProcessor struct {
+type Processor struct {
     name             string
     re               *regexp.Regexp
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewRegexProcessor(name, reString string, whitelistCodeRes *structures.RegexpSet) (result *RegexProcessor, err error) {
+func NewProcessor(name, reString string, whitelistCodeRes *structures.RegexpSet) (result *Processor, err error) {
     var re *regexp.Regexp
     re, err = regexp.Compile(reString)
     if err != nil {
         return
     }
 
-    result = &RegexProcessor{
+    result = &Processor{
         name:             name,
         re:               re,
         whitelistCodeRes: whitelistCodeRes,
@@ -30,15 +30,15 @@ func NewRegexProcessor(name, reString string, whitelistCodeRes *structures.Regex
     return
 }
 
-func (p *RegexProcessor) Name() string {
+func (p *Processor) Name() string {
     return p.name
 }
 
-func (p *RegexProcessor) FindInFileChange(*git.FileChange, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
+func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(line string, _ *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := p.re.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -59,6 +59,6 @@ func (p *RegexProcessor) FindInLine(line string, _ *logrus.Entry) (result []*fin
     return
 }
 
-func (p *RegexProcessor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
+func (p *Processor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
     return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
 }

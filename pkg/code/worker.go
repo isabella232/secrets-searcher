@@ -36,6 +36,7 @@ func (w worker) prepareRepo(ghRepo *RepoInfo) (err error) {
 
     defer func() {
         if w.prog != nil {
+            bar.Incr()
             w.prog.Add(0, mpb.BarFillerFunc(func(writer io.Writer, width int, st *decor.Statistics) {
                 fmt.Fprintf(writer, "- source of %s is prepared ", w.repoInfo.Name)
             })).SetTotal(0, true)
@@ -89,10 +90,6 @@ func (w worker) prepareRepo(ghRepo *RepoInfo) (err error) {
         return
     }
 
-    if bar != nil {
-        bar.Incr()
-    }
-
     w.log.Debug("repo is prepared")
     return
 }
@@ -115,12 +112,11 @@ func (w worker) removeExistingCorruptClone() (err error) {
 }
 
 func (w worker) cloneRepo(url, cloneDir string, log *logrus.Entry) (err error) {
-    if _, cloneErr := w.git.Clone(url, cloneDir); gitpkg.IsErrEmptyRemoteRepository(cloneErr) {
-        log.Warn("clone failed because remote repo has no commits, skipping")
-        return
-    } else if cloneErr != nil {
-        err = cloneErr
-        return
+    if _, err = w.git.Clone(url, cloneDir); err != nil {
+        if gitpkg.IsErrEmptyRemoteRepository(err) {
+            log.Warn("clone failed because remote repo has no commits, skipping")
+        }
+        _ = os.RemoveAll(cloneDir)
     }
 
     return

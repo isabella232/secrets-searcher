@@ -1,22 +1,18 @@
 package structures
 
 type FileRange struct {
-    StartLineNum     int
-    StartIndex       int
-    EndLineNum       int
-    EndIndex         int
-    StartDiffLineNum int // FIXME This is not general enough for this package
-    EndDiffLineNum   int // FIXME This is not general enough for this package
+    StartLineNum int
+    StartIndex   int
+    EndLineNum   int
+    EndIndex     int
 }
 
-func NewFileRangeFromLineRange(lineRange *LineRange, lineNum, diffLineNum int) (result *FileRange) {
+func NewFileRangeFromLineRange(lineRange *LineRange, lineNum int) (result *FileRange) {
     return &FileRange{
-        StartLineNum:     lineNum,
-        StartIndex:       lineRange.StartIndex,
-        EndLineNum:       lineNum,
-        EndIndex:         lineRange.EndIndex,
-        StartDiffLineNum: diffLineNum,
-        EndDiffLineNum:   diffLineNum,
+        StartLineNum: lineNum,
+        StartIndex:   lineRange.StartIndex,
+        EndLineNum:   lineNum,
+        EndIndex:     lineRange.EndIndex,
     }
 }
 

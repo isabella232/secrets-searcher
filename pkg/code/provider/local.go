@@ -10,17 +10,23 @@ import (
 )
 
 type LocalProvider struct {
+    name       string
     dir        string
     repoFilter *structures.Filter
     log        *logrus.Logger
 }
 
-func NewLocalProvider(dir string, repoFilter *structures.Filter, log *logrus.Logger) *LocalProvider {
+func NewLocalProvider(name, dir string, repoFilter *structures.Filter, log *logrus.Logger) *LocalProvider {
     return &LocalProvider{
+        name:       name,
         dir:        dir,
         repoFilter: repoFilter,
         log:        log,
     }
+}
+
+func (p *LocalProvider) GetName() (result string) {
+    return p.name
 }
 
 func (p *LocalProvider) GetRepositories() (result []*code.RepoInfo, err error) {

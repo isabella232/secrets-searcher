@@ -7,11 +7,14 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "os"
     "path/filepath"
+    "sync"
 )
 
 type Database struct {
-    dir    string
-    driver *scribble.Driver
+    dir     string
+    mutex   sync.Mutex
+    mutexes map[string]*sync.Mutex
+    driver  *scribble.Driver
 }
 
 type Object interface{}
@@ -23,21 +26,26 @@ func New(dir string) (database *Database, err error) {
     }
 
     database = &Database{
-        dir:    dir,
-        driver: driver,
+        dir:     dir,
+        mutexes: make(map[string]*sync.Mutex),
+        driver:  driver,
     }
     return
 }
 
-func (d *Database) TableExists(table string) bool {
-    dir := filepath.Join(d.dir, table)
+func (d *Database) TableExists(collection string) bool {
+    dir := filepath.Join(d.dir, collection)
     _, err := os.Stat(dir)
     return !os.IsNotExist(err)
 }
 
-func (d *Database) DeleteTableIfExists(table string) (err error) {
-    if d.TableExists(table) {
-        dir := filepath.Join(d.dir, table)
+func (d *Database) DeleteTableIfExists(collection string) (err error) {
+    mutex := d.getOrCreateMutex(collection)
+    mutex.Lock()
+    defer mutex.Unlock()
+
+    if d.TableExists(collection) {
+        dir := filepath.Join(d.dir, collection)
         if err = os.RemoveAll(dir); err != nil {
             return errors.Wrapv(err, "unable to delete table directory", dir)
         }
@@ -47,6 +55,25 @@ func (d *Database) DeleteTableIfExists(table string) (err error) {
 
 func (d *Database) write(collection, resource string, v interface{}) error {
     return d.driver.Write(collection, resource, v)
+}
+
+func (d *Database) writeIfNotExists(collection, resource string, obj interface{}) (created bool, err error) {
+    mutex := d.getOrCreateMutex(collection)
+    mutex.Lock()
+    defer mutex.Unlock()
+
+    var exists bool
+    exists, err = d.exists(collection, resource)
+    if err != nil {
+        return
+    }
+
+    if !exists {
+        err = d.write(collection, resource, obj)
+        created = true
+    }
+
+    return
 }
 
 func (d *Database) read(collection, resource string, v interface{}) (err error) {
@@ -84,6 +111,24 @@ func (d *Database) readAll(collection string) (rows []string, err error) {
         return
     }
     return d.driver.ReadAll(collection)
+}
+
+// getOrCreateMutex creates a new collection specific mutex any time a collection
+// is being modfied to avoid unsafe operations
+func (d *Database) getOrCreateMutex(collection string) *sync.Mutex {
+
+    d.mutex.Lock()
+    defer d.mutex.Unlock()
+
+    m, ok := d.mutexes[collection]
+
+    // if the mutex doesn't exist make it
+    if !ok {
+        m = &sync.Mutex{}
+        d.mutexes[collection] = m
+    }
+
+    return m
 }
 
 func CreateHashID(firstInput interface{}, otherInputs ...interface{}) (result string) {

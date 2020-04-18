@@ -1,19 +1,19 @@
-package git
+package diff_operation
 
 // *** generated with go-genums ***
 
 // DiffOperationEnum is the the enum interface that can be used
 type DiffOperationEnum interface {
 	String() string
-	Value() DiffOperationValue
+	Value() diffOperationValue
 	uniqueDiffOperationMethod()
 }
 
 // diffOperationEnumBase is the internal, non-exported type
-type diffOperationEnumBase struct{ value DiffOperationValue }
+type diffOperationEnumBase struct{ value diffOperationValue }
 
 // Value() returns the enum value
-func (eb diffOperationEnumBase) Value() DiffOperationValue { return eb.value }
+func (eb diffOperationEnumBase) Value() diffOperationValue { return eb.value }
 
 // String() returns the enum name as you use it in Go code,
 // needs to be overriden by inheriting types
@@ -65,7 +65,7 @@ var internalDiffOperationEnumValues = []DiffOperationEnum{
 func DiffOperationEnumValues() []DiffOperationEnum { return internalDiffOperationEnumValues[:] }
 
 // NewDiffOperationFromValue will generate a valid enum from a value, or return nil in case of invalid value
-func NewDiffOperationFromValue(v DiffOperationValue) (result DiffOperationEnum) {
+func NewDiffOperationFromValue(v diffOperationValue) (result DiffOperationEnum) {
 	switch v {
 	case valueEqual:
 		result = Equal{}.New()
@@ -78,7 +78,7 @@ func NewDiffOperationFromValue(v DiffOperationValue) (result DiffOperationEnum) 
 }
 
 // MustGetDiffOperationFromValue is the same as NewDiffOperationFromValue, but will panic in case of conversion failure
-func MustGetDiffOperationFromValue(v DiffOperationValue) DiffOperationEnum {
+func MustGetDiffOperationFromValue(v diffOperationValue) DiffOperationEnum {
 	result := NewDiffOperationFromValue(v)
 	if result == nil {
 		panic("invalid DiffOperationEnum value cast")

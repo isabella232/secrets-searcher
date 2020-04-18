@@ -25,7 +25,7 @@ func (g *Git) NewRepository(cloneDir string) (result *Repository, err error) {
         return
     }
 
-    return newRepository(g, gitRepo)
+    return newRepository(g, gitRepo, cloneDir, g.log)
 }
 
 func (g *Git) Clone(url, cloneDir string) (result *Repository, err error) {
@@ -35,7 +35,7 @@ func (g *Git) Clone(url, cloneDir string) (result *Repository, err error) {
         return
     }
 
-    return newRepository(g, gitRepo)
+    return newRepository(g, gitRepo, cloneDir, g.log)
 }
 
 func (g *Git) IsCloneValid(cloneDir string) (result bool) {

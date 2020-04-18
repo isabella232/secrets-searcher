@@ -4,6 +4,7 @@ import (
     "bytes"
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
+    "github.com/pantheon-systems/search-secrets/pkg/git/diff_operation"
     gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
     gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
     "strings"
@@ -11,15 +12,16 @@ import (
 
 type (
     FileChange struct {
+        commit        *Commit
         Path          string
         gitFileChange *gitobject.Change
-        memo          memo
+        memo          fileChangeMemo
     }
     Chunk struct {
-        Type    DiffOperationEnum
+        Type    diff_operation.DiffOperationEnum
         Content string
     }
-    memo struct {
+    fileChangeMemo struct {
         gitPatch    *gitobject.Patch
         gitChunks   []gitdiff.Chunk
         chunks      []Chunk
@@ -28,11 +30,12 @@ type (
     }
 )
 
-func NewFileChange(gitFileChange *gitobject.Change) (result *FileChange) {
+func NewFileChange(commit *Commit, gitFileChange *gitobject.Change) (result *FileChange) {
     return &FileChange{
+        commit:        commit,
         Path:          gitFileChange.To.Name,
         gitFileChange: gitFileChange,
-        memo:          memo{},
+        memo:          fileChangeMemo{},
     }
 }
 
@@ -61,7 +64,7 @@ func (fcc *FileChange) Chunks() (result []Chunk, err error) {
 
     for _, gitChunk := range filePatch.Chunks() {
         result = append(result, Chunk{
-            Type:    NewDiffOperationFromGitOperation(gitChunk.Type()),
+            Type:    diff_operation.NewDiffOperationFromGitOperation(gitChunk.Type()),
             Content: gitChunk.Content(),
         })
     }
@@ -72,7 +75,7 @@ func (fcc *FileChange) Chunks() (result []Chunk, err error) {
 }
 
 func (fcc *FileChange) Diff() (result *diffpkg.Diff, err error) {
-    if fcc.memo.diff !=nil {
+    if fcc.memo.diff != nil {
         result = fcc.memo.diff
         return
     }
@@ -145,7 +148,7 @@ func (fcc *FileChange) getGitPatch() (result *gitobject.Patch, err error) {
         return fcc.memo.gitPatch, nil
     }
 
-    fcc.memo.gitPatch, err = fcc.gitFileChange.Patch()
+    fcc.memo.gitPatch, err = fcc.wrapPatch()
     result = fcc.memo.gitPatch
 
     return
@@ -159,7 +162,7 @@ func (fcc *FileChange) getGitFilePatch() (result gitdiff.FilePatch, err error) {
     }
 
     if patch == nil {
-        err =errors.New("Filepatches is nil?")
+        err = errors.New("Filepatches is nil?")
         return
     }
     result = patch.FilePatches()[0]
@@ -194,11 +197,18 @@ func buildDiffLineInfo(chunks []Chunk) (result map[int]int, diffLines []string, 
 
             // Prepare for next
             diffLineNum += 1
-            if chunk.Type.Value() != DeleteEnum.Value() {
+            if chunk.Type.Value() != diff_operation.DeleteEnum.Value() {
                 fileLineNum += 1
             }
         }
     }
 
     return
+}
+
+func (fcc *FileChange) wrapPatch() (result *gitobject.Patch, err error) {
+    fcc.commit.repository.mutex.Lock()
+    defer fcc.commit.repository.mutex.Unlock()
+
+    return fcc.gitFileChange.Patch()
 }

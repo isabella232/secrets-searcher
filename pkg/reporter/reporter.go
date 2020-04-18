@@ -35,14 +35,14 @@ type Reporter struct {
     log               *logrus.Logger
 }
 
-func New(dir, archiveDir string, skipReportSecrets bool, appURL string, db *database.Database, log *logrus.Logger) *Reporter {
+func New(dir, archiveDir string, skipReportSecrets bool, appURL string, enableDebugOutput bool, db *database.Database, log *logrus.Logger) *Reporter {
     return &Reporter{
         dir:               dir,
         archiveDir:        archiveDir,
         secretsDir:        filepath.Join(dir, "secrets"),
         reportFilePath:    filepath.Join(dir, "report.html"),
         skipReportSecrets: skipReportSecrets,
-        builder:           NewBuilder(appURL, db, log),
+        builder:           NewBuilder(appURL, enableDebugOutput, db, log),
         db:                db,
         log:               log,
     }
