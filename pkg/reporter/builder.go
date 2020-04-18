@@ -36,26 +36,25 @@ type (
         Findings []findingData `yaml:"findings"`
     }
     findingData struct {
-        ID                  string    `yaml:"finding-id"`
-        ProcessorName       string    `yaml:"processor"`
-        RepoName            string    `yaml:"-"`
-        RepoFullLink        linkData  `yaml:"repo"`
-        CommitHash          string    `yaml:"-"`
-        CommitHashLink      linkData  `yaml:"commit"`
-        CommitHashLinkShort linkData  `yaml:"-"`
-        CommitDate          time.Time `yaml:"commit-date"`
-        CommitAuthorEmail   string    `yaml:"-"`
-        CommitAuthorFull    string    `yaml:"commit-author"`
-        FilePath            string    `yaml:"-"`
-        FileLineLink        linkData  `yaml:"file-location"`
-        FileLineLinkShort   linkData  `yaml:"-"`
-        ColStartIndex       int       `yaml:"col-start-index"`
-        ColEndIndex         int       `yaml:"col-end-index"`
-        ColIndexDiff        int
-        CodeShort           string `yaml:"-"`
-        Code                string `yaml:"-"`
-        CodeTrimmed         string `yaml:"code"`
-        CodeShowGuide       bool
+        ID                  string      `yaml:"finding-id"`
+        ProcessorName       string      `yaml:"processor"`
+        RepoName            string      `yaml:"-"`
+        RepoFullLink        linkData    `yaml:"repo"`
+        CommitHash          string      `yaml:"-"`
+        CommitHashLink      linkData    `yaml:"commit"`
+        CommitHashLinkShort linkData    `yaml:"-"`
+        CommitDate          time.Time   `yaml:"commit-date"`
+        CommitAuthorEmail   string      `yaml:"-"`
+        CommitAuthorFull    string      `yaml:"commit-author"`
+        FilePath            string      `yaml:"-"`
+        FileLineLink        linkData    `yaml:"file-location"`
+        FileLineLinkShort   linkData    `yaml:"-"`
+        ColStartIndex       int         `yaml:"col-start-index"`
+        ColEndIndex         int         `yaml:"col-end-index"`
+        CodeShort           string      `yaml:"-"`
+        Code                string      `yaml:"-"`
+        CodeTrimmed         string      `yaml:"code"`
+        CodeShowGuide       bool        `yaml:"-"`
         Extras              []extraData `yaml:"extras"`
     }
     extraData struct {
@@ -237,7 +236,6 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
         FileLineLinkShort:   fileLineLinkShort,
         ColStartIndex:       finding.StartIndex,
         ColEndIndex:         finding.EndIndex,
-        ColIndexDiff:        finding.EndIndex - finding.StartIndex,
         Code:                finding.Code,
         CodeTrimmed:         strings.TrimRight(finding.Code, "\n"),
         CodeShowGuide:       finding.StartLineNum == finding.EndLineNum,
