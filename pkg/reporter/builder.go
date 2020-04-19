@@ -18,7 +18,7 @@ type (
         appURL            string
         enableDebugOutput bool
         db                *database.Database
-        log               *logrus.Logger
+        log               logrus.FieldLogger
     }
     reportData struct {
         ReportDate        time.Time
@@ -53,6 +53,7 @@ type (
         ColEndIndex         int         `yaml:"col-end-index"`
         CodeShort           string      `yaml:"-"`
         Code                string      `yaml:"-"`
+        CodeIsFile          bool        `yaml:"code-is-whole-file"`
         CodeTrimmed         string      `yaml:"code"`
         CodeShowGuide       bool        `yaml:"-"`
         Extras              []extraData `yaml:"extras"`
@@ -68,11 +69,11 @@ type (
     linkData struct {
         Label   string `yaml:"label"`
         URL     string `yaml:"url"`
-        Tooltip string `yaml:"tooltip"`
+        Tooltip string `yaml:"-"`
     }
 )
 
-func NewBuilder(appURL string, enableDebugOutput bool, db *database.Database, log *logrus.Logger) *Builder {
+func NewBuilder(appURL string, enableDebugOutput bool, db *database.Database, log logrus.FieldLogger) *Builder {
     return &Builder{
         appURL:            appURL,
         enableDebugOutput: enableDebugOutput,
@@ -88,24 +89,28 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
     var secrets database.Secrets
     secrets, err = b.db.GetSecretsSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secrets")
         return
     }
 
     var findingsBySecret database.FindingGroups
     findingsBySecret, err = b.db.GetFindingsSortedGroupedBySecretID()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
         return
     }
 
     var findingExtrasByFinding database.FindingExtraGroups
     findingExtrasByFinding, err = b.db.GetFindingExtrasSortedGroupedByFindingID()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
         return
     }
 
     var secretExtrasBySecretID database.SecretExtraGroups
     secretExtrasBySecretID, err = b.db.GetSecretExtrasSortedGroupedBySecretID()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secret extras")
         return
     }
 
@@ -124,6 +129,7 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
         var secretData *secretData
         secretData, err = b.buildSecretData(secret, secretExtras, findings, findingExtrasByFinding)
         if err != nil {
+            err = errors.WithMessage(err, "unable to build secret data")
             return
         }
 
@@ -159,6 +165,7 @@ func (b *Builder) buildSecretData(secret *database.Secret, secretExtras database
         var findingData findingData
         findingData, err = b.buildFindingData(finding, findingExtras)
         if err != nil {
+            err = errors.WithMessage(err, "unable to build finding data")
             return
         }
 
@@ -188,12 +195,14 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
     var commit *database.Commit
     commit, err = b.db.GetCommit(finding.CommitID)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commit")
         return
     }
 
     var repo *database.Repo
     repo, err = b.db.GetRepo(commit.RepoID)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repo")
         return
     }
 

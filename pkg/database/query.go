@@ -2,6 +2,7 @@ package database
 
 import (
     "encoding/json"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "sort"
     "strings"
@@ -15,8 +16,10 @@ func (d *Database) GetRepo(id string) (result *Repo, err error) {
 }
 
 func (d *Database) GetRepos() (result Repos, err error) {
-    lines, err := d.readAll(RepoTable)
+    var lines []string
+    lines, err = d.readAll(RepoTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos")
         return
     }
 
@@ -35,6 +38,7 @@ func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result Repos
     var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repos")
         return
     }
 
@@ -50,6 +54,7 @@ func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result Repos
 func (d *Database) GetReposSorted() (result Repos, err error) {
     result, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos")
         return
     }
 
@@ -61,6 +66,7 @@ func (d *Database) GetReposSorted() (result Repos, err error) {
 func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result Repos, err error) {
     result, err = d.GetReposFiltered(repoFilter)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repos")
         return
     }
 
@@ -73,6 +79,7 @@ func (d *Database) GetRepoByName(name string) (result *Repo, err error) {
     var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos by name")
         return
     }
 
@@ -108,8 +115,10 @@ func (d *Database) GetCommit(id string) (result *Commit, err error) {
 }
 
 func (d *Database) GetCommits() (result Commits, err error) {
-    lines, err := d.readAll(CommitTable)
+    var lines []string
+    lines, err = d.readAll(CommitTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commits")
         return
     }
 
@@ -128,6 +137,7 @@ func (d *Database) GetCommits() (result Commits, err error) {
 func (d *Database) GetCommitsSortedByDate() (result Commits, err error) {
     result, err = d.GetCommits()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commits sorted by date")
         return
     }
 
@@ -153,8 +163,10 @@ func (d *Database) GetFinding(id string) (result *Finding, err error) {
 }
 
 func (d *Database) GetFindings() (result Findings, err error) {
-    lines, err := d.readAll(FindingTable)
+    var lines []string
+    lines, err = d.readAll(FindingTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to read all findings")
         return
     }
 
@@ -179,6 +191,7 @@ func (d *Database) GetFindingsWithIDIndex() (result map[string]*Finding, err err
     var objs Findings
     objs, err = d.GetFindings()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
         return
     }
 
@@ -194,6 +207,7 @@ func (d *Database) GetFindingsSortedGroupedBySecretID() (result FindingGroups, e
     var objs Findings
     objs, err = d.GetFindings()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
         return
     }
 
@@ -214,8 +228,10 @@ func (d *Database) GetFindingExtra(id string) (result *FindingExtra, err error) 
 }
 
 func (d *Database) GetFindingExtras() (result FindingExtras, err error) {
-    lines, err := d.readAll(FindingExtrasTable)
+    var lines []string
+    lines, err = d.readAll(FindingExtrasTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
         return
     }
 
@@ -234,6 +250,7 @@ func (d *Database) GetFindingExtras() (result FindingExtras, err error) {
 func (d *Database) GetFindingExtrasSorted() (result FindingExtras, err error) {
     result, err = d.GetFindingExtras()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
         return
     }
 
@@ -255,6 +272,7 @@ func (d *Database) GetFindingExtrasSortedGroupedByFindingID() (result FindingExt
     var objs FindingExtras
     objs, err = d.GetFindingExtrasSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted finding extras")
         return
     }
 
@@ -275,8 +293,10 @@ func (d *Database) GetSecret(id string) (result *Secret, err error) {
 }
 
 func (d *Database) GetSecrets() (result Secrets, err error) {
-    lines, err := d.readAll(SecretTable)
+    var lines []string
+    lines, err = d.readAll(SecretTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to read all secrets")
         return
     }
 
@@ -295,6 +315,7 @@ func (d *Database) GetSecrets() (result Secrets, err error) {
 func (d *Database) GetSecretsSorted() (result Secrets, err error) {
     result, err = d.GetSecrets()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secrets")
         return
     }
 
@@ -311,6 +332,7 @@ func (d *Database) GetSecretsSortedIndexed() (result SecretIndex, err error) {
     var secrets Secrets
     secrets, err = d.GetSecretsSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted secrets")
         return
     }
 
@@ -340,8 +362,10 @@ func (d *Database) GetSecretExtra(id string) (result *SecretExtra, err error) {
 }
 
 func (d *Database) GetSecretExtras() (result SecretExtras, err error) {
-    lines, err := d.readAll(SecretExtrasTable)
+    var lines []string
+    lines, err = d.readAll(SecretExtrasTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secret extras")
         return
     }
 
@@ -360,6 +384,7 @@ func (d *Database) GetSecretExtras() (result SecretExtras, err error) {
 func (d *Database) GetSecretExtrasSorted() (result SecretExtras, err error) {
     result, err = d.GetSecretExtras()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted secret extras")
         return
     }
 
@@ -383,6 +408,7 @@ func (d *Database) GetSecretExtrasSortedGroupedBySecretID() (result SecretExtraG
     var objs SecretExtras
     objs, err = d.GetSecretExtrasSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted, grouped secret extras")
         return
     }
 

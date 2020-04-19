@@ -14,31 +14,23 @@ type Processor struct {
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewProcessor(name, reString string, whitelistCodeRes *structures.RegexpSet) (result *Processor, err error) {
-    var re *regexp.Regexp
-    re, err = regexp.Compile(reString)
-    if err != nil {
-        return
-    }
-
-    result = &Processor{
+func NewProcessor(name string, re *regexp.Regexp, whitelistCodeRes *structures.RegexpSet) (result *Processor) {
+    return &Processor{
         name:             name,
         re:               re,
         whitelistCodeRes: whitelistCodeRes,
     }
-
-    return
 }
 
 func (p *Processor) Name() string {
     return p.name
 }
 
-func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
+func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, logrus.FieldLogger) (result []*finder.ProcFinding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *Processor) FindInLine(line string, _ *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(line string, _ logrus.FieldLogger) (result []*finder.ProcFindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := p.re.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -50,9 +42,9 @@ func (p *Processor) FindInLine(line string, _ *logrus.Entry) (result []*finder.F
             continue
         }
 
-        result = append(result, &finder.FindingInLine{
+        result = append(result, &finder.ProcFindingInLine{
             LineRange: lineRangeValue.LineRange,
-            Secret:    &finder.Secret{Value: lineRangeValue.Value},
+            Secret:    &finder.ProcSecret{Value: lineRangeValue.Value},
         })
     }
 

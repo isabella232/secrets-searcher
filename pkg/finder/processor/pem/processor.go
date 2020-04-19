@@ -3,6 +3,7 @@ package pem
 import (
     "fmt"
     diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/finder"
     "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
@@ -48,14 +49,15 @@ func (p *Processor) Name() string {
     return p.name
 }
 
-func (p *Processor) FindInLine(string, *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(string, logrus.FieldLogger) (result []*finder.ProcFindingInLine, ignore []*structures.LineRange, err error) {
     return
 }
 
-func (p *Processor) FindInFileChange(fileChange *git.FileChange, commit *git.Commit, log *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
+func (p *Processor) FindInFileChange(fileChange *git.FileChange, commit *git.Commit, log logrus.FieldLogger) (result []*finder.ProcFinding, ignore []*structures.FileRange, err error) {
     var diff *diffpkg.Diff
     diff, err = fileChange.Diff()
     if err != nil {
+        err = errors.WithMessagev(err, "unable to get diff for file change", fileChange.Path)
         return
     }
 

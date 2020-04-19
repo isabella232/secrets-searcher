@@ -16,10 +16,10 @@ type Repository struct {
     gitRepo  *gitvendor.Repository
     cloneDir string
     mutex    *sync.Mutex
-    log      *logrus.Entry
+    log      logrus.FieldLogger
 }
 
-func newRepository(git *Git, gitRepo *gitvendor.Repository, cloneDir string, log *logrus.Entry) (result *Repository, err error) {
+func newRepository(git *Git, gitRepo *gitvendor.Repository, cloneDir string, log logrus.FieldLogger) (result *Repository, err error) {
     result = &Repository{
         git:      git,
         gitRepo:  gitRepo,
@@ -54,6 +54,7 @@ func (r *Repository) Log(filter *CommitFilter) (result []*Commit, err error) {
 
             commit, err = newCommit(r, gitCommit)
             if err != nil {
+                err = errors.WithMessage(err, "unable to create new commit")
                 return
             }
 
@@ -113,6 +114,7 @@ func (r *Repository) Log(filter *CommitFilter) (result []*Commit, err error) {
 
         commit, err = newCommit(r, gitCommit)
         if err != nil {
+            err = errors.WithMessage(err, "unable to create new commit")
             return
         }
 
@@ -138,9 +140,12 @@ func (r *Repository) Commit(hashString string) (result *Commit, err error) {
     var gitCommit *gitobject.Commit
     gitCommit, err = r.wrapCommitObject(gitplumbing.NewHash(hashString))
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commit")
         return
     }
+
     result, err = newCommit(r, gitCommit)
+
     return
 }
 

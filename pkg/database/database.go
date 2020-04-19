@@ -20,8 +20,10 @@ type Database struct {
 type Object interface{}
 
 func New(dir string) (database *Database, err error) {
-    driver, err := scribble.New(dir, nil)
+    var driver *scribble.Driver
+    driver, err = scribble.New(dir, nil)
     if err != nil {
+        err = errors.Wrapv(err, "unable to create new database driver for directory", dir)
         return
     }
 
@@ -65,6 +67,7 @@ func (d *Database) writeIfNotExists(collection, resource string, obj interface{}
     var exists bool
     exists, err = d.exists(collection, resource)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get \"exists\" value")
         return
     }
 

@@ -55,11 +55,11 @@ func (p *Processor) Name() string {
     return p.name
 }
 
-func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
+func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, logrus.FieldLogger) (result []*finder.ProcFinding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *Processor) FindInLine(line string, log *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(line string, log logrus.FieldLogger) (result []*finder.ProcFindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := findPossibleURLsInStringRe.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -73,7 +73,7 @@ func (p *Processor) FindInLine(line string, log *logrus.Entry) (result []*finder
         // Parse URL
         url, parseErr := urlpkg.Parse(urlString)
         if parseErr != nil {
-            errors.ErrorLogForEntry(log, parseErr).Error("regex matched URL but url.Parse() could not, dropping match")
+            errors.ErrorLogger(log, parseErr).Error("regex matched URL but url.Parse() could not, dropping match")
             continue
         }
 
@@ -82,7 +82,7 @@ func (p *Processor) FindInLine(line string, log *logrus.Entry) (result []*finder
 
         secrets, findErr := p.findSecretsInURL(url, urlString, lineRange.StartIndex, log)
         if findErr != nil {
-            errors.ErrorLogForEntry(log, findErr).Error("unable to find secrets in URL, dropping match")
+            errors.ErrorLogger(log, findErr).Error("unable to find secrets in URL, dropping match")
             continue
         }
         if secrets == nil {
@@ -96,9 +96,9 @@ func (p *Processor) FindInLine(line string, log *logrus.Entry) (result []*finder
         }
 
         for _, secret := range secrets {
-            result = append(result, &finder.FindingInLine{
+            result = append(result, &finder.ProcFindingInLine{
                 LineRange: secret.LineRange,
-                Secret:    &finder.Secret{Value: secret.Value},
+                Secret:    &finder.ProcSecret{Value: secret.Value},
             })
         }
     }
@@ -106,11 +106,12 @@ func (p *Processor) FindInLine(line string, log *logrus.Entry) (result []*finder
     return
 }
 
-func (p *Processor) findSecretsInURL(url *urlpkg.URL, urlString string, urlStartIndex int, log *logrus.Entry) (result []*structures.LineRangeValue, err error) {
+func (p *Processor) findSecretsInURL(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue, err error) {
     // Check password in URL
     var password *structures.LineRangeValue
     password, err = p.findPasswordInURL(url, urlString, urlStartIndex)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to find password in URL", urlString)
         return
     }
     if password != nil {
@@ -165,7 +166,7 @@ func (p *Processor) findPasswordInURL(url *urlpkg.URL, urlString string, urlStar
     return
 }
 
-func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString string, urlStartIndex int, log *logrus.Entry) (result []*structures.LineRangeValue) {
+func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue) {
     if len(url.Path) < 5 {
         return
     }
@@ -201,7 +202,7 @@ func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString str
     return
 }
 
-func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log *logrus.Entry) (result bool) {
+func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log logrus.FieldLogger) (result bool) {
     pathPieceLen := len(pathPiece)
 
     if pathPieceLen == 0 || pathPieceLen < secretInPathLengthThreshold {
@@ -210,7 +211,7 @@ func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log *logrus.Entr
 
     hasEntropy, err := entropy.HasHighEntropy(pathPiece, entropy.Base64CharsetName, secretInPathEntropyThreshold)
     if err != nil {
-        errors.ErrorLogForEntry(log, err).Error("unable to evaluate path piece for high entropy")
+        errors.ErrorLogger(log, err).Error("unable to evaluate path piece for high entropy")
         return
     }
 

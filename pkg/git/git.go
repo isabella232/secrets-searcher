@@ -8,10 +8,10 @@ import (
 )
 
 type Git struct {
-    log *logrus.Entry
+    log logrus.FieldLogger
 }
 
-func New(log *logrus.Entry) *Git {
+func New(log logrus.FieldLogger) *Git {
     return &Git{
         log: log,
     }

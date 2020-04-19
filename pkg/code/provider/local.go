@@ -13,10 +13,10 @@ type LocalProvider struct {
     name       string
     dir        string
     repoFilter *structures.Filter
-    log        *logrus.Logger
+    log        logrus.FieldLogger
 }
 
-func NewLocalProvider(name, dir string, repoFilter *structures.Filter, log *logrus.Logger) *LocalProvider {
+func NewLocalProvider(name, dir string, repoFilter *structures.Filter, log logrus.FieldLogger) *LocalProvider {
     return &LocalProvider{
         name:       name,
         dir:        dir,
@@ -50,7 +50,7 @@ func (p *LocalProvider) GetRepositories() (result []*code.RepoInfo, err error) {
             Name:     repoDir.Name(),
             FullName: "FullName unknown",
             Owner:    "Owner unknown",
-            SSHURL:   "SSHURL unknown",
+            SSHURL:   "RemoteURL unknown",
             HTMLURL:  "HTMLURL unknown",
         })
     }

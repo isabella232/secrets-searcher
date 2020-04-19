@@ -3,7 +3,6 @@ package errors
 import (
     "bytes"
     "fmt"
-    "os"
     "regexp"
     "strings"
 
@@ -17,19 +16,26 @@ var (
     logrusRegex         = regexp.MustCompile("\\s?level=[^ ]+\\s?")
 )
 
+type (
+    DoWithPanicFunc         func(recovered interface{})
+    DoWithErrFunc           func(err error)
+    DoWithLogFunc           func(err error, log logrus.FieldLogger)
+    DoWithLogAndMessageFunc func(err error, log logrus.FieldLogger, message string)
+)
+
 // Add contextual information to the end of the error string
-func Errorv(message string, args ...interface{}) error {
-    return errorsOrig.New(messageWithValue(message, value(args...)))
+func Errorv(message string, arg0 interface{}, args ...interface{}) error {
+    return errorsOrig.New(messageWithValue(message, arg0, args...))
 }
 
 // Like Errorv(), but for WithMessage()
-func WithMessagev(err error, message string, args ...interface{}) error {
-    return errorsOrig.WithMessage(err, messageWithValue(message, args...))
+func WithMessagev(err error, message string, arg0 interface{}, args ...interface{}) error {
+    return errorsOrig.WithMessage(err, messageWithValue(message, arg0, args...))
 }
 
 // Like Errorv(), but for Wrap()
-func Wrapv(err error, message string, args ...interface{}) error {
-    return errorsOrig.Wrap(err, messageWithValue(message, args...))
+func Wrapv(err error, message string, arg0 interface{}, args ...interface{}) error {
+    return errorsOrig.Wrap(err, messageWithValue(message, arg0, args...))
 }
 
 // Wrapped
@@ -72,56 +78,83 @@ func Cause(err error) error {
     return errorsOrig.Cause(err)
 }
 
-// Log error and return logrus.Entry object
-func ErrorLog(log *logrus.Logger, err error) *logrus.Entry {
-    stacktrace := StackTraceString(err)
-    return log.WithError(err).WithField("stacktrace", stacktrace)
+// Log error and return Logger object
+func ErrorLogger(log logrus.FieldLogger, err error) logrus.FieldLogger {
+    log = WithStacktrace(log, err)
+    return log.WithError(err)
 }
 
-// Log error and return logrus.Entry object
-func ErrorLogForEntry(log *logrus.Entry, err error) *logrus.Entry {
-    stacktrace := StackTraceString(err)
-    return log.WithError(err).WithField("stacktrace", stacktrace)
+// Log error and return logger object
+func LogErrorThenDie(log logrus.FieldLogger, err error) {
+    ErrorLogger(log, err).Fatal("fatal error")
 }
 
-// Log error and return logrus.Entry object
-func PanicLogError(log *logrus.Logger, recovered interface{}) *logrus.Entry {
-    err := PanicError(recovered)
-    stacktrace := StackTraceString(err)
-    return log.WithError(err).WithField("stacktrace", stacktrace)
-}
+// Panic handling
 
-// Log error and return logrus.Entry object
-func PanicLogEntryError(log *logrus.Entry, recovered interface{}) *logrus.Entry {
-    err := PanicError(recovered)
-    stacktrace := StackTraceString(err)
-    return log.WithError(err).WithField("stacktrace", stacktrace)
+// Catch panic and do something with it
+/* Usage:
+func main() {
+    defer errors.CatchPanicValueDo(func(recovered interface{}) {
+        fmt.Print(recovered) // "this was inevitable"
+    })
+    panic("this was inevitable")
 }
-
-// Log error and return logrus.Entry object
-func Fatal(log *logrus.Logger, err error) {
-    stacktrace := StackTraceString(err)
-    log.WithField("stacktrace", stacktrace).Error(err)
-    os.Exit(1)
-}
-
-func PanicWithMessage(recovered interface{}, message string) error {
-    return WithMessagef(PanicError(recovered), message)
-}
-
-func PanicError(recovered interface{}) error {
-    return Errorf(fmt.Sprintf("panic caught: %v", recovered))
-}
-
-func LogPanicAndContinue(log *logrus.Logger) {
+*/
+func CatchPanicValueDo(panicHandle DoWithPanicFunc) {
     if recovered := recover(); recovered != nil {
-        PanicLogError(log, recovered)
+        panicHandle(recovered)
     }
 }
 
-func LogEntryPanicAndContinue(log *logrus.Entry) {
+// Catch panic, convert it to an error object, and do something with it
+/* Usage:
+func main() {
+    defer errors.CatchPanicDo(func(err error) {
+        fmt.Print(err.Error()) // "panic caught: this was inevitable"
+    })
+    panic("this was inevitable")
+}
+*/
+func CatchPanicDo(doFunc DoWithErrFunc) {
     if recovered := recover(); recovered != nil {
-        PanicLogEntryError(log, recovered)
+        err := panicValueToErr(recovered)
+        doFunc(err)
+    }
+}
+
+// Catch panic and log it
+/* Usage:
+func main() {
+    defer errors.CatchPanicAndLogIt(log)
+    panic("this was inevitable") // logged: "panic caught: this was inevitable"
+}
+*/
+func CatchPanicAndLogIt(log logrus.FieldLogger) {
+    if recovered := recover(); recovered != nil {
+        err := panicValueToErr(recovered)
+        log = ErrorLogger(log, err)
+        log.Error(err.Error())
+    }
+}
+
+// Catch panic, convert it to an error object, and set an error pointer with it with a message
+/* Usage:
+func do() (err error) {
+    defer errors.CatchPanicSetErr(&err, "something happened")
+    panic("this was inevitable")
+}
+func main() {
+    if err := do(); err != nil {
+        fmt.Print(err.Error()) // "something happened: panic caught: this was inevitable"
+    }
+}
+*/
+func CatchPanicSetErr(err *error, message string) {
+    if recovered := recover(); recovered != nil {
+        *err = panicValueToErr(recovered)
+        if message != "" {
+            *err = WithMessage(*err, message)
+        }
     }
 }
 
@@ -155,33 +188,37 @@ func StackTrace(err error) errorsOrig.StackTrace {
     return st
 }
 
-func messageWithValue(message string, args ...interface{}) string {
-    return fmt.Sprintf("%s (%v)", message, value(args...))
+func WithStacktrace(log logrus.FieldLogger, err error) logrus.FieldLogger {
+    return log.WithField("stacktrace", StackTraceString(err))
 }
 
-func value(args ...interface{}) string {
-    if len(args) == 1 {
-        var arg = args[0]
-        if arg == "" {
+func messageWithValue(message string, arg0 interface{}, args ...interface{}) string {
+    return fmt.Sprintf("%s (%v)", message, value(arg0, args...))
+}
+
+func value(arg0 interface{}, args ...interface{}) string {
+    if len(args) == 0 {
+        if arg0 == "" {
             return "[empty string]"
         }
-        if arg == nil {
+        if arg0 == nil {
             return "[nil]"
         }
 
-        switch v := arg.(type) {
+        switch v := arg0.(type) {
         case logrus.Fields:
             return fieldsString(v)
         case map[string]interface{}:
             return fieldsString(v)
-        default:
-            return fmt.Sprintf("%s", v)
         }
+
+        return fmt.Sprintf("%+v", arg0)
     }
 
-    values := make([]string, len(args))
+    values := make([]string, len(args)+1)
+    values[0] = value(arg0)
     for i, arg := range args {
-        values[i] = value(arg)
+        values[i+1] = value(arg)
     }
 
     return strings.Join(values, "; ")
@@ -211,4 +248,8 @@ func getInnerError(err error) error {
         return nil
     }
     return cer.Cause()
+}
+
+func panicValueToErr(recovered interface{}) (result error) {
+    return Errorf(fmt.Sprintf("panic caught: %v", recovered))
 }

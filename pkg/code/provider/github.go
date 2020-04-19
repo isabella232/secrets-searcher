@@ -10,16 +10,18 @@ import (
     "golang.org/x/oauth2"
 )
 
+const perPage = 100
+
 type GithubProvider struct {
     name         string
     client       *github.Client
     organization string
     repoFilter   *structures.Filter
     excludeForks bool
-    log          *logrus.Logger
+    log          logrus.FieldLogger
 }
 
-func NewGithubProvider(name, apiToken, organization string, repoFilter *structures.Filter, excludeForks bool, log *logrus.Logger) *GithubProvider {
+func NewGithubProvider(name, apiToken, organization string, repoFilter *structures.Filter, excludeForks bool, log logrus.FieldLogger) *GithubProvider {
     ctx := context.Background()
     tc := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: apiToken}))
     client := github.NewClient(tc)
@@ -71,13 +73,14 @@ func (p *GithubProvider) GetRepositories() (result []*code.RepoInfo, err error) 
 func (p *GithubProvider) QueryReposByOrg(organization string) (result []*github.Repository, err error) {
     ctx := context.Background()
     opt := &github.RepositoryListByOrgOptions{
-        ListOptions: github.ListOptions{PerPage: 100},
+        ListOptions: github.ListOptions{PerPage: perPage},
     }
     for {
         var repos []*github.Repository
         var resp *github.Response
         repos, resp, err = p.client.Repositories.ListByOrg(ctx, organization, opt)
         if err != nil {
+            err = errors.WithMessagef(err, "unable to get %d repos from GitHub (page %d)", perPage, opt.Page)
             return
         }
         result = append(result, repos...)

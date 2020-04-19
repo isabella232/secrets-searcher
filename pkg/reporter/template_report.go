@@ -206,7 +206,7 @@ func template_reportTemplate() string {
 		"            background-color: #e9e9e9;\n" +
 		"        }\n" +
 		"\n" +
-		"        .details table pre {\n" +
+		"        .details pre {\n" +
 		"            margin-bottom: 0\n" +
 		"        }\n" +
 		"\n" +

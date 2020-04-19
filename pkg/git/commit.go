@@ -12,7 +12,7 @@ type (
         repository  *Repository
         Hash        string
         Message     string
-        Time        time.Time
+        Date        time.Time
         AuthorEmail string
         AuthorFull  string
         Oldest      bool
@@ -32,7 +32,7 @@ func newCommit(repository *Repository, gitCommit *gitobject.Commit) (result *Com
         repository:  repository,
         Hash:        gitCommit.Hash.String(),
         Message:     gitCommit.Message,
-        Time:        gitCommit.Committer.When,
+        Date:        gitCommit.Committer.When,
         AuthorEmail: gitCommit.Author.Name,
         AuthorFull:  gitCommit.Author.String(),
         gitCommit:   gitCommit,
@@ -46,11 +46,9 @@ func newCommit(repository *Repository, gitCommit *gitobject.Commit) (result *Com
 }
 
 func (c *Commit) Parents() (result []*Commit, err error) {
-    defer func() {
-        if recovered := recover(); recovered != nil {
-            err = errors.PanicWithMessage(recovered, "unable to retrieve parent commits")
-        }
-    }()
+    defer errors.CatchPanicDo(func(err error) {
+        err = errors.WithMessage(err, "unable to retrieve parent commits")
+    })
 
     if c.memo.parents != nil {
         result = c.memo.parents
@@ -60,6 +58,7 @@ func (c *Commit) Parents() (result []*Commit, err error) {
     // Get parents
     result, err = c.repository.newCommitsFromItem(c.parents())
     if err != nil {
+        err = errors.WithMessage(err, "unable to get parent commits of commit")
         return
     }
 
@@ -105,6 +104,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
     var parents []*Commit
     parents, err = c.Parents()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get parents")
         return
     }
     parentsLen := len(parents)
@@ -113,6 +113,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
     var commitTree *Tree
     commitTree, err = c.tree()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get tree")
         return
     }
 
@@ -121,6 +122,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
     if parentsLen == 1 {
         parentCommitTree, err = parents[0].tree()
         if err != nil {
+            err = errors.WithMessage(err, "unable to get parent tree")
             return
         }
     } else if c.Oldest {
@@ -134,6 +136,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
     var gitFileChanges gitobject.Changes
     gitFileChanges, err = parentCommitTree.wrapDiff(commitTree)
     if err != nil {
+        err = errors.WithMessage(err, "unable to diff")
         return
     }
 
@@ -161,6 +164,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
                 var hasCodeChanges bool
                 hasCodeChanges, err = fileChange.HasCodeChanges()
                 if err != nil {
+                    err = errors.WithMessage(err, "unable to detect if file change has code changes")
                     return
                 }
                 if !hasCodeChanges {
@@ -173,6 +177,7 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
                 var isBinary bool
                 isBinary, err = fileChange.IsBinaryOrEmpty()
                 if err != nil {
+                    err = errors.WithMessage(err, "unable to detect if file is binary/empty")
                     return
                 }
                 if isBinary {
@@ -197,6 +202,7 @@ func (c *Commit) FileContents(path string) (result string, err error) {
     var file *gitobject.File
     file, err = c.gitCommit.File(path)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file at commit")
         return
     }
 
@@ -219,6 +225,7 @@ func (c *Commit) tree() (result *Tree, err error) {
     var gitTree *gitobject.Tree
     gitTree, err = c.gitCommit.Tree()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get tree")
         return
     }
     result = newTree(gitTree)

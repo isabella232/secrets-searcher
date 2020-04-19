@@ -2,6 +2,7 @@ package code
 
 import (
     "github.com/pantheon-systems/search-secrets/pkg/database"
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
     interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
@@ -19,7 +20,7 @@ type (
         codeDir        string
         interact       interactpkg.Interactish
         db             *database.Database
-        log            *logrus.Entry
+        log            logrus.FieldLogger
     }
     SourceProvider interface {
         GetName() string
@@ -35,7 +36,7 @@ type (
     }
 )
 
-func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir string, interact interactpkg.Interactish, db *database.Database, log *logrus.Entry) *Code {
+func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir string, interact interactpkg.Interactish, db *database.Database, log logrus.FieldLogger) *Code {
     return &Code{
         sourceProvider: sourceProvider,
         repoFilter:     repoFilter,
@@ -47,9 +48,12 @@ func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir s
 }
 
 func (c *Code) PrepareCode() (err error) {
+    c.log.Info("preparing repos ... ")
+
     var repoInfos []*RepoInfo
     repoInfos, err = c.getRepoInfos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repo infos")
         return
     }
 
@@ -93,6 +97,7 @@ func (c *Code) getRepoInfos() (result []*RepoInfo, err error) {
         var repoNames structures.Set
         repoInfos, repoNames, err = c.getFilteredRepoInfosFromDatabase()
         if err != nil {
+            err = errors.WithMessage(err, "unable to get repo infos from database")
             return
         }
 
@@ -111,8 +116,10 @@ func (c *Code) getRepoInfos() (result []*RepoInfo, err error) {
 
     // Get repo infos from source provider if we haven't already gotten the repo list from the database
     if result == nil {
-        c.log.Debug("querying source provider for new repo info")
-        result, err = c.sourceProvider.GetRepositories()
+        c.interact.SpinWhile("querying source provider for repo info", func() {
+            c.log.Debug("querying source provider for repo info")
+            result, err = c.sourceProvider.GetRepositories()
+        })
     }
 
     return
@@ -122,6 +129,7 @@ func (c *Code) getFilteredRepoInfosFromDatabase() (result []*RepoInfo, repoNames
     var dbRepos []*database.Repo
     dbRepos, err = c.db.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repo infos from database")
         return
     }
 
@@ -136,7 +144,7 @@ func (c *Code) getFilteredRepoInfosFromDatabase() (result []*RepoInfo, repoNames
             SourceProvider: c.sourceProvider.GetName(),
             FullName:       dbRepo.FullName,
             Owner:          dbRepo.Owner,
-            SSHURL:         dbRepo.SSHURL,
+            SSHURL:         dbRepo.RemoteURL,
             HTMLURL:        dbRepo.HTMLURL,
         })
 

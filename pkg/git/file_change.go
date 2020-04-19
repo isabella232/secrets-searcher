@@ -43,6 +43,7 @@ func (fcc *FileChange) IsBinaryOrEmpty() (result bool, err error) {
     var filePatch gitdiff.FilePatch
     filePatch, err = fcc.getGitFilePatch()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file patch")
         return
     }
 
@@ -59,6 +60,7 @@ func (fcc *FileChange) Chunks() (result []Chunk, err error) {
     var filePatch gitdiff.FilePatch
     filePatch, err = fcc.getGitFilePatch()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file patch")
         return
     }
 
@@ -92,12 +94,14 @@ func (fcc *FileChange) Diff() (result *diffpkg.Diff, err error) {
     var lineStrings []string
     lineMap, lineStrings, err = buildDiffLineInfo(chunks)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file patch")
         return
     }
 
     var diff *diffpkg.Diff
     diff, err = diffpkg.New(lineStrings, lineMap)
     if err != nil {
+        err = errors.WithMessage(err, "unable to build diff")
         return
     }
 
@@ -115,12 +119,14 @@ func (fcc *FileChange) PatchString() (result string, err error) {
     var patch *gitobject.Patch
     patch, err = fcc.getGitPatch()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file patch")
         return
     }
 
     buf := bytes.NewBuffer(nil)
     encoder := gitdiff.NewUnifiedEncoder(buf, 3)
     if err = encoder.Encode(patch); err != nil {
+        err = errors.WithMessage(err, "unable to encode file patch")
         return
     }
 
@@ -138,11 +144,7 @@ func (fcc *FileChange) HasCodeChanges() (result bool, err error) {
 }
 
 func (fcc *FileChange) getGitPatch() (result *gitobject.Patch, err error) {
-    defer func() {
-        if recovered := recover(); recovered != nil {
-            err = errors.PanicWithMessage(recovered, "unable to retrieve patch")
-        }
-    }()
+    defer errors.CatchPanicSetErr(&err, "unable to retrieve patch")
 
     if fcc.memo.gitPatch != nil {
         return fcc.memo.gitPatch, nil
@@ -158,6 +160,7 @@ func (fcc *FileChange) getGitFilePatch() (result gitdiff.FilePatch, err error) {
     var patch *gitobject.Patch
     patch, err = fcc.getGitPatch()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get file patch")
         return
     }
 

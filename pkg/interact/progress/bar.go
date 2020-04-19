@@ -17,20 +17,22 @@ type Bar struct {
     unitPlural       string
     total            int
     runningTotal     int
+    appendMsgFormat string
     completedMessage string
     mutex            *sync.Mutex
-    log              *logrus.Entry
+    log              logrus.FieldLogger
 
     // FIXME Not the place for this
-    SecretTracker structures.Set
+    SecretTracker   structures.Set
 }
 
-func newBar(progress *Progress, barName string, total int, completedMessage string, log *logrus.Entry) (result *Bar) {
+func newBar(progress *Progress, barName string, total int, appendMsgFormat, completedMessage string, log logrus.FieldLogger) (result *Bar) {
     result = &Bar{
         barName:          barName,
         progress:         progress,
         total:            total,
         runningTotal:     total,
+        appendMsgFormat: appendMsgFormat,
         completedMessage: completedMessage,
         mutex:            &sync.Mutex{},
         log:              log,
@@ -54,7 +56,7 @@ func (b *Bar) Start() {
             decor.Name(b.barName, decor.WC{W: 50, C: decor.DidentRight}),
         ),
         mpb.AppendDecorators(
-            decor.CountersNoUnit("searched %d of %d commits"),
+            decor.CountersNoUnit(b.appendMsgFormat),
         ),
     )
 }

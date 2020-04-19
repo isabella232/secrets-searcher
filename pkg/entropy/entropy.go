@@ -19,6 +19,7 @@ func HasHighEntropy(inputString, charsetName string, entropyThreshold float64) (
     var charsetChars string
     charsetChars, err = getCharsetChars(charsetName)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to get charset characters for name", charsetName)
         return
     }
 
@@ -34,8 +35,10 @@ func HasHighEntropy(inputString, charsetName string, entropyThreshold float64) (
 }
 
 func FindHighEntropyWords(inputString, charsetName string, lengthThreshold int, entropyThreshold float64) (result []*structures.LineRangeValue, err error) {
-    charsetChars, err := getCharsetChars(charsetName)
+    var charsetChars string
+    charsetChars, err = getCharsetChars(charsetName)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to get charset characters for name", charsetName)
         return
     }
 

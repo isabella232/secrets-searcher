@@ -1,6 +1,7 @@
 package logwriter
 
 import (
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "io"
     "os"
     "sync"
@@ -17,6 +18,7 @@ func New(logFilePath string) (result *LogWriter, err error) {
     var logFile *os.File
     logFile, err = os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to open file", logFilePath)
         return
     }
 

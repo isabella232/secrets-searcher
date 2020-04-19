@@ -52,6 +52,63 @@ func (p *Processor) Name() string {
     return p.name
 }
 
+func (p *Processor) FindInFileChange(fileChange *git.FileChange, _ *git.Commit, log logrus.FieldLogger) (result []*finder.ProcFinding, ignore []*structures.FileRange, err error) {
+    var diff *diffpkg.Diff
+    var dErr error
+    diff, err = fileChange.Diff()
+    if err != nil {
+        err = errors.WithMessagev(err, "unable to get diff for file change", fileChange.Path)
+        return
+    }
+
+    if p.skipPEMs && strings.HasSuffix(fileChange.Path, ".pem") {
+        log.Debug("skipping PEM file because skipPEMs is true")
+        return
+    }
+
+    for {
+        // Skip PEM files of all types
+        if p.skipPEMs {
+            dErr = p.skipPEMsInDiff(diff)
+            if diffpkg.IsEOF(dErr) {
+                break
+            } else if dErr != nil {
+                err = errors.WithMessage(dErr, "unable to skip PEMs")
+                return
+            }
+        }
+
+        // Get to an add line
+        dErr = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool { return diff.Line.IsAdd })
+        if diffpkg.IsEOF(dErr) {
+            break
+        } else if dErr != nil {
+            err = errors.WithMessage(dErr, "unable to skip PEMs")
+            return
+        }
+
+        // Find entropy in line
+        var findings []*finder.ProcFinding
+        findings, err = p.findEntropyInLine(diff.Line)
+        if err != nil {
+            err = errors.WithMessage(err, "unable to search for high entropy words, continuing to next line")
+            if err = diff.Increment(); err != nil {
+                return
+            }
+            continue
+        }
+        if findings != nil {
+            result = append(result, findings...)
+        }
+
+        if err = diff.Increment(); err != nil {
+            return
+        }
+    }
+
+    return
+}
+
 func (p *Processor) skipPEMsInDiff(diff *diffpkg.Diff) (err error) {
     for {
         if diff.Line.CodeMatches(pemBeginHeaderRegex) {
@@ -90,70 +147,16 @@ func (p *Processor) skipPEMsInDiff(diff *diffpkg.Diff) (err error) {
             }
             continue
         }
+        break
     }
-}
-
-func (p *Processor) FindInFileChange(fileChange *git.FileChange, commit *git.Commit, log *logrus.Entry) (result []*finder.Finding, ignore []*structures.FileRange, err error) {
-    var diff *diffpkg.Diff
-    var dErr error
-    diff, err = fileChange.Diff()
-    if err != nil {
-        return
-    }
-
-    if p.skipPEMs && strings.HasSuffix(fileChange.Path, ".pem") {
-        log.Debug("skipping PEM file because skipPEMs is true")
-        return
-    }
-
-    for {
-        // Skip PEM files of all types
-        if p.skipPEMs {
-            dErr = p.skipPEMsInDiff(diff)
-            if diffpkg.IsEOF(dErr) {
-                break
-            } else if dErr != nil {
-                err = errors.WithMessage(dErr, "unable to skip PEMs")
-                return
-            }
-        }
-
-        // Get to an add line
-        dErr = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool { return diff.Line.IsAdd })
-        if diffpkg.IsEOF(dErr) {
-            break
-        } else if dErr != nil {
-            err = errors.WithMessage(dErr, "unable to skip PEMs")
-            return
-        }
-
-        // Find entropy in line
-        var findings []*finder.Finding
-        findings, err = p.findEntropyInLine(diff.Line)
-        if err != nil {
-            err = errors.WithMessage(err, "unable to search for high entropy words, continuing to next line")
-            if err = diff.Increment(); err != nil {
-                return
-            }
-            continue
-        }
-        if findings != nil {
-            result = append(result, findings...)
-        }
-
-        if err = diff.Increment(); err != nil {
-            return
-        }
-    }
-
     return
 }
 
-func (p *Processor) FindInLine(string, *logrus.Entry) (result []*finder.FindingInLine, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(string, logrus.FieldLogger) (result []*finder.ProcFindingInLine, ignore []*structures.LineRange, err error) {
     return
 }
 
-func (p *Processor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.Finding, err error) {
+func (p *Processor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.ProcFinding, err error) {
     var ranges []*structures.LineRangeValue
     ranges, err = entropypkg.FindHighEntropyWords(diffLine.Code, p.Charset, p.LengthThreshold, p.EntropyThreshold)
     if err != nil || ranges == nil {
@@ -165,7 +168,7 @@ func (p *Processor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.
             continue
         }
 
-        var extras []*finder.Extra
+        var extras []*finder.ProcExtra
 
         secretValue := rang.Value
 
@@ -190,17 +193,17 @@ func (p *Processor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.
         }
 
         if decodedString != "" {
-            extras = append(extras, &finder.Extra{
+            extras = append(extras, &finder.ProcExtra{
                 Key:    fmt.Sprintf("decoded-%s", encoding),
-                Header: fmt.Sprintf("Decoded (%s}", encoding),
+                Header: fmt.Sprintf("Decoded (%s)", encoding),
                 Value:  decodedString,
                 Code:   true,
             })
         }
 
-        result = append(result, &finder.Finding{
+        result = append(result, &finder.ProcFinding{
             FileRange:    structures.NewFileRangeFromLineRange(rang.LineRange, diffLine.LineNumFile),
-            Secret:       &finder.Secret{Value: secretValue},
+            Secret:       &finder.ProcSecret{Value: secretValue},
             SecretExtras: extras,
         })
     }

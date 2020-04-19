@@ -40,7 +40,7 @@ type (
         EndLineNum   int
         EndIndex     int
         Code         string
-        CodePadding  int
+        CodeIsFile   bool
     }
     Findings      []*Finding
     FindingGroups map[string]Findings
@@ -88,7 +88,7 @@ type (
         Owner          string
         SourceProvider string
         FullName       string
-        SSHURL         string
+        RemoteURL      string
         HTMLURL        string
         CloneDir       string
     }

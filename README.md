@@ -60,7 +60,7 @@ backreference and it returns a string that doesn't match the secret value, the s
 
 #### Whitelisting secrets directly
 
-The recommended way to do this is to copy the secret's JSON file from `./report/secrets` to `./_pantheon/whitelist` and
+The recommended way to do this is to copy the secret's JSON file from `./report/secret-data` to `./_pantheon/whitelist` and
 commit your changes. Add your comments to the top of that file, describing the reason for your entry.
 
 Another way is to add the secret's ID to the `whitelist-secret-ids` section of the config. This way is quick and dirty,

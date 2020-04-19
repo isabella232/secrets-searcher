@@ -19,12 +19,12 @@ type worker struct {
     git      *gitpkg.Git
     prog     *progress.Progress
     db       *database.Database
-    log      *logrus.Entry
+    log      logrus.FieldLogger
 }
 
 func (w worker) Perform() {
     if err := w.prepareRepo(w.repoInfo); err != nil {
-        errors.ErrorLogForEntry(w.log, errors.WithMessagev(err, "unable to prepare repo", w.repoInfo.Name))
+        errors.ErrorLogger(w.log, errors.WithMessagev(err, "unable to prepare repo", w.repoInfo.Name))
     }
 }
 
@@ -38,7 +38,7 @@ func (w worker) prepareRepo(ghRepo *RepoInfo) (err error) {
         if w.prog != nil {
             bar.Incr()
             w.prog.Add(0, mpb.BarFillerFunc(func(writer io.Writer, width int, st *decor.Statistics) {
-                fmt.Fprintf(writer, "- source of %s is prepared ", w.repoInfo.Name)
+                fmt.Fprintf(writer, "- %s repo prepared for search", w.repoInfo.Name)
             })).SetTotal(0, true)
         }
     }()
@@ -53,7 +53,7 @@ func (w worker) prepareRepo(ghRepo *RepoInfo) (err error) {
 
     // Remove the clone if it is corrupt
     if err = w.removeExistingCorruptClone(); err != nil {
-        err = errors.Wrapv(err, "unable to remove corrupt repo, skipping")
+        err = errors.Wrap(err, "unable to remove corrupt repo, skipping")
         return
     }
 
@@ -77,13 +77,13 @@ func (w worker) prepareRepo(ghRepo *RepoInfo) (err error) {
     }
 
     err = w.db.WriteRepo(&database.Repo{
-        ID:       database.CreateHashID(ghRepo.FullName),
-        Name:     ghRepo.Name,
-        FullName: ghRepo.FullName,
-        Owner:    ghRepo.Owner,
-        SSHURL:   ghRepo.SSHURL,
-        HTMLURL:  ghRepo.HTMLURL,
-        CloneDir: w.cloneDir,
+        ID:        database.CreateHashID(ghRepo.FullName),
+        Name:      ghRepo.Name,
+        FullName:  ghRepo.FullName,
+        Owner:     ghRepo.Owner,
+        RemoteURL: ghRepo.SSHURL,
+        HTMLURL:   ghRepo.HTMLURL,
+        CloneDir:  w.cloneDir,
     })
     if err != nil {
         err = errors.WithMessagev(err, "unable to write repo, skipping", ghRepo.Name)
@@ -111,7 +111,7 @@ func (w worker) removeExistingCorruptClone() (err error) {
     return
 }
 
-func (w worker) cloneRepo(url, cloneDir string, log *logrus.Entry) (err error) {
+func (w worker) cloneRepo(url, cloneDir string, log logrus.FieldLogger) (err error) {
     if _, err = w.git.Clone(url, cloneDir); err != nil {
         if gitpkg.IsErrEmptyRemoteRepository(err) {
             log.Warn("clone failed because remote repo has no commits, skipping")

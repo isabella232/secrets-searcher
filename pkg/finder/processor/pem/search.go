@@ -40,13 +40,13 @@ type search struct {
     fileChange         *git.FileChange
     commit             *git.Commit
     diff               *diffpkg.Diff
-    findings           *[]*finder.Finding
+    findings           *[]*finder.ProcFinding
     ignore             *[]*structures.FileRange
-    log                *logrus.Entry
+    log                logrus.FieldLogger
 }
 
 func (s *search) find() (err error) {
-    var finding *finder.Finding
+    var finding *finder.ProcFinding
     var dErr error
 
     for {
@@ -83,12 +83,12 @@ func (s *search) find() (err error) {
 }
 
 // Find a potential key
-func (s *search) findKey() (result *finder.Finding) {
+func (s *search) findKey() (result *finder.ProcFinding) {
     var dErr error
     log := s.lg()
     originalLine := s.diff.Line.LineNum
 
-    funcs := []func() (*finder.Finding, error){
+    funcs := []func() (*finder.ProcFinding, error){
         s.findAddedKey,
         s.findRotatedKey,
         s.findJSONKey,
@@ -100,7 +100,7 @@ func (s *search) findKey() (result *finder.Finding) {
         dErr = s.diff.SetLine(originalLine)
         if dErr != nil {
             if !diffpkg.IsEOF(dErr) {
-                errors.ErrorLogForEntry(log, dErr).Warn(dErr, "error setting line")
+                errors.ErrorLogger(log, dErr).Warn(dErr, "error setting line")
             }
             return
         }
@@ -109,7 +109,7 @@ func (s *search) findKey() (result *finder.Finding) {
         result, dErr = fnc()
         if dErr != nil {
             if !diffpkg.IsEOF(dErr) {
-                errors.ErrorLogForEntry(log, dErr).Warn(dErr, "error while finding key")
+                errors.ErrorLogger(log, dErr).Warn(dErr, "error while finding key")
                 continue
             }
             return
@@ -140,7 +140,7 @@ func (s *search) findKey() (result *finder.Finding) {
 // +[...]
 // +[...]
 // +-----END RSA PRIVATE KEY-----"""
-func (s *search) findAddedKey() (result *finder.Finding, err error) {
+func (s *search) findAddedKey() (result *finder.ProcFinding, err error) {
     if !s.diff.Line.IsAdd || !strings.HasSuffix(s.diff.Line.Code, s.header) {
         return
     }
@@ -194,7 +194,7 @@ func (s *search) findAddedKey() (result *finder.Finding, err error) {
 // +[...]
 // +[...]
 //  -----END RSA PRIVATE KEY-----
-func (s *search) findRotatedKey() (result *finder.Finding, err error) {
+func (s *search) findRotatedKey() (result *finder.ProcFinding, err error) {
     if !s.diff.Line.IsEqu || !strings.HasSuffix(s.diff.Line.Code, s.header) {
         return
     }
@@ -245,7 +245,7 @@ func (s *search) findRotatedKey() (result *finder.Finding, err error) {
 // JSON object line:
 //
 // +    "key": "-----BEGIN RSA PRIVATE KEY-----\n[...]\n[...]\n[...]\n-----END RSA PRIVATE KEY-----\n",
-func (s *search) findJSONKey() (result *finder.Finding, err error) {
+func (s *search) findJSONKey() (result *finder.ProcFinding, err error) {
     matches := s.oneLineJSONPattern.FindStringSubmatch(s.diff.Line.Code)
     if len(matches) == 0 {
         return
@@ -272,7 +272,7 @@ func (s *search) findJSONKey() (result *finder.Finding, err error) {
     return s.buildKeyFinding(keyString, fileRange, false)
 }
 
-func (s *search) buildKeyFinding(keyString string, fileRange *structures.FileRange, isKeyFile bool) (result *finder.Finding, err error) {
+func (s *search) buildKeyFinding(keyString string, fileRange *structures.FileRange, isKeyFile bool) (result *finder.ProcFinding, err error) {
     switch s.pemType {
     case RSAPrivateKey{}.New():
         return s.buildRSAPrivateKeyFinding(keyString, fileRange, isKeyFile)
@@ -281,23 +281,23 @@ func (s *search) buildKeyFinding(keyString string, fileRange *structures.FileRan
     }
 }
 
-func (s *search) buildGeneralKeyFinding(keyString string, fileRange *structures.FileRange) (result *finder.Finding, err error) {
+func (s *search) buildGeneralKeyFinding(keyString string, fileRange *structures.FileRange) (result *finder.ProcFinding, err error) {
     _, err = s.parseX509PEMString(keyString)
     if err != nil {
         err = errors.WithMessagev(err, "invalid x509 PEM key", keyString)
         return
     }
 
-    result = &finder.Finding{
+    result = &finder.ProcFinding{
         FileRange: fileRange,
-        Secret:    &finder.Secret{Value: keyString},
+        Secret:    &finder.ProcSecret{Value: keyString},
     }
     return
 }
 
-func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structures.FileRange, isKeyFile bool) (result *finder.Finding, err error) {
-    var secretExtras []*finder.Extra
-    var findingExtras []*finder.Extra
+func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structures.FileRange, isKeyFile bool) (result *finder.ProcFinding, err error) {
+    var secretExtras []*finder.ProcExtra
+    var findingExtras []*finder.ProcExtra
     var key *rsa.PrivateKey
 
     key, err = s.parseRSAPrivateKeyX509PEMString(keyString)
@@ -306,7 +306,7 @@ func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structur
         return
     }
 
-    secretExtras = append(secretExtras, &finder.Extra{
+    secretExtras = append(secretExtras, &finder.ProcExtra{
         Key:    "public-key-info",
         Header: "Public key info",
         Value:  s.publicKeyInfo(&key.PublicKey),
@@ -316,11 +316,12 @@ func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structur
     var keyPEMBlock *pem.Block
     keyPEMBlock, err = s.decodePEMString(keyString)
     if err != nil {
+        err = errors.WithMessage(err, "unable to decode PEM string")
         return
     }
 
     if isKeyFile {
-        var extras []*finder.Extra
+        var extras []*finder.ProcExtra
         extras, err = s.buildBundledCertExtras(keyPEMBlock)
         if err == nil && extras != nil {
             findingExtras = append(findingExtras, extras...)
@@ -334,9 +335,9 @@ func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structur
         }
     }
 
-    result = &finder.Finding{
+    result = &finder.ProcFinding{
         FileRange:     fileRange,
-        Secret:        &finder.Secret{Value: keyString},
+        Secret:        &finder.ProcSecret{Value: keyString},
         SecretExtras:  secretExtras,
         FindingExtras: findingExtras,
     }
@@ -344,7 +345,7 @@ func (s *search) buildRSAPrivateKeyFinding(keyString string, fileRange *structur
     return
 }
 
-func (s *search) buildBundledCertExtras(keyPEMBlock *pem.Block) (result []*finder.Extra, err error) {
+func (s *search) buildBundledCertExtras(keyPEMBlock *pem.Block) (result []*finder.ProcExtra, err error) {
     var cert *x509.Certificate
     var certPEMBlock *pem.Block
     var certPath string
@@ -360,13 +361,13 @@ func (s *search) buildBundledCertExtras(keyPEMBlock *pem.Block) (result []*finde
     }
     pemBlockString := buf.String()
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "bundled-certificate-path",
         Header: "Bundled certificate path",
         Value:  certPath,
     })
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "bundled-certificate",
         Header: "Bundled certificate",
         Value:  pemBlockString,
@@ -376,10 +377,11 @@ func (s *search) buildBundledCertExtras(keyPEMBlock *pem.Block) (result []*finde
     var certInfo string
     certInfo, err = certinfo.CertificateText(cert)
     if err != nil {
+        err = errors.Wrap(err, "unable to get cert info")
         return
     }
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "bundled-certificate-info",
         Header: "Bundled certificate info",
         Value:  certInfo,
@@ -389,31 +391,32 @@ func (s *search) buildBundledCertExtras(keyPEMBlock *pem.Block) (result []*finde
     return
 }
 
-func (s *search) buildPairedPublicKeyExtras() (result []*finder.Extra, err error) {
+func (s *search) buildPairedPublicKeyExtras() (result []*finder.ProcExtra, err error) {
     var pubKey *rsa.PublicKey
     var sshPubKey ssh.PublicKey
     var pubKeyPath string
     pubKey, sshPubKey, pubKeyPath, err = s.lookForPairedPublicKey()
     if err != nil {
+        err = errors.Wrap(err, "unable to find paired public key")
         return
     }
 
     authorizedKey := ssh.MarshalAuthorizedKey(sshPubKey)
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "paired-public-key-path",
         Header: "Public key file",
         Value:  pubKeyPath,
     })
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "paired-public-key",
         Header: "Public key contents",
         Value:  bytes.NewBuffer(authorizedKey).String(),
         Code:   true,
     })
 
-    result = append(result, &finder.Extra{
+    result = append(result, &finder.ProcExtra{
         Key:    "paired-public-key-info",
         Header: "Public key info",
         Value:  s.publicKeyInfo(pubKey),
@@ -468,7 +471,7 @@ func (s *search) lookForPairedPublicKey() (result *rsa.PublicKey, sshPubKey ssh.
         case ssh.KeyAlgoRSA:
             rsaKey, ok := reflect.ValueOf(pubKey).Convert(reflect.TypeOf(&rsa.PublicKey{})).Interface().(*rsa.PublicKey)
             if !ok {
-                errors.ErrorLogForEntry(log, err).Warn("expecting an RSA public key in bundled certificate")
+                errors.ErrorLogger(log, err).Warn("expecting an RSA public key in bundled certificate")
                 continue
             }
             result = rsaKey
@@ -619,7 +622,7 @@ func (s *search) parseRSAPrivateKeyX509PEMString(keyString string) (result *rsa.
     var ok bool
     result, ok = privateKey.(*rsa.PrivateKey)
     if !ok {
-        err = errors.Wrapv(err, "not an RSA private key")
+        err = errors.Wrap(err, "not an RSA private key")
     }
 
     return
@@ -644,7 +647,7 @@ func (s *search) decodePEMString(certString string) (result *pem.Block, err erro
     return s.decodePEMBytes([]byte(certString))
 }
 
-func (s *search) lg() *logrus.Entry {
+func (s *search) lg() logrus.FieldLogger {
     return s.log.WithFields(logrus.Fields{
         "code": s.diff.Line.Code,
         "line": s.diff.Line.LineNumFile,

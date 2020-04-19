@@ -37,10 +37,10 @@ func (cf *CommitFilter) IsIncludedInLogResults(commit *Commit, hashSet *structur
     }
 
     // Filter by time
-    if !cf.LatestTime.IsZero() && commit.Time.After(cf.LatestTime) {
+    if !cf.LatestTime.IsZero() && commit.Date.After(cf.LatestTime) {
         return
     }
-    if commit.Time.Before(cf.EarliestTime) {
+    if commit.Date.Before(cf.EarliestTime) {
         more = false
         return
     }

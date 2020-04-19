@@ -10,15 +10,16 @@ type (
     Interact struct {
         Enabled   bool
         logWriter *logwriter.LogWriter
-        log       *logrus.Entry
+        log       logrus.FieldLogger
     }
     Dummy       struct{}
     Interactish interface {
         NewProgress() *progress.Progress
+        SpinWhile(message string, doFunc func())
     }
 )
 
-func New(enabled bool, logWriter *logwriter.LogWriter, log *logrus.Entry) *Interact {
+func New(enabled bool, logWriter *logwriter.LogWriter, log logrus.FieldLogger) *Interact {
     return &Interact{
         Enabled:   enabled,
         logWriter: logWriter,
@@ -31,6 +32,21 @@ func (i *Interact) NewProgress() *progress.Progress {
         return nil
     }
     return progress.New(i.logWriter, i.log)
+}
+
+func (i *Interact) SpinWhile(message string, doFunc func()) {
+    if !i.Enabled {
+        doFunc()
+        return
+    }
+
+    prog := progress.New(i.logWriter, i.log)
+    spinner := prog.AddSpinner(message)
+
+    doFunc()
+
+    spinner.Incr()
+    prog.Wait()
 }
 
 func (d *Dummy) NewProgress() *progress.Progress {

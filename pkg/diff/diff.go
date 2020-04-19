@@ -33,7 +33,7 @@ func New(lineStrings []string, lineMap map[int]int) (result *Diff, err error) {
     }
 
     if err = diff.SetLine(1); err != nil {
-        err = errors.Errorv("unable to set line to 1")
+        err = errors.New("unable to set line to 1")
         return
     }
 
@@ -88,6 +88,7 @@ func (d *Diff) SetLine(lineNum int) (err error) {
     var line *Line
     line, err = d.buildLine(lineNum)
     if err != nil {
+        err = errors.WithMessage(err, "unable to build line")
         return
     }
 
@@ -130,7 +131,7 @@ func IsEOF(err error) bool {
 
 func (d *Diff) buildLine(lineNumDiff int) (result *Line, err error) {
     if lineNumDiff < 1 {
-        err = errors.Errorv("cannot build a line less than 1")
+        err = errors.New("cannot build a line less than 1")
     }
     if lineNumDiff > len(d.lineStrings) {
         err = errors.WithMessage(errEOF, "end of file")

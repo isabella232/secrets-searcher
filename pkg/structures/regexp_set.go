@@ -1,6 +1,7 @@
 package structures
 
 import (
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "regexp"
 )
 
@@ -20,6 +21,7 @@ func NewRegexpSetFromStrings(values []string) (result RegexpSet, err error) {
         var re *regexp.Regexp
         re, err = regexp.Compile(value)
         if err != nil {
+            err = errors.Wrapv(err, "unable to parse regex string", value)
             return
         }
 

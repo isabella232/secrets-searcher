@@ -10,7 +10,7 @@ type (
         uiProgress *mpb.Progress
         logWriter  LogWriter
         started    bool
-        log        *logrus.Entry
+        log        logrus.FieldLogger
     }
     LogWriter interface {
         Reset()
@@ -18,7 +18,7 @@ type (
     }
 )
 
-func New(logWriter LogWriter, log *logrus.Entry) *Progress {
+func New(logWriter LogWriter, log logrus.FieldLogger) *Progress {
     uiProgress := mpb.New(mpb.PopCompletedMode())
 
     return &Progress{
@@ -28,18 +28,18 @@ func New(logWriter LogWriter, log *logrus.Entry) *Progress {
     }
 }
 
-func (p *Progress) AddBar(barName string, total int, completedMessage string) *Bar {
+func (p *Progress) AddBar(barName string, total int, appendMsgFormat, completedMsg string) *Bar {
     if p.logWriter != nil {
         p.logWriter.DisableStdout()
     }
-    return newBar(p, barName, total, completedMessage, p.log)
+    return newBar(p, barName, total, appendMsgFormat, completedMsg, p.log)
 }
 
 func (p *Progress) AddSpinner(barName string) *Spinner {
     if p.logWriter != nil {
         p.logWriter.DisableStdout()
     }
-    return NewSpinner(p, barName)
+    return newSpinner(p, barName)
 }
 
 func (p *Progress) Add(total int64, filler mpb.BarFiller, options ...mpb.BarOption) *mpb.Bar {

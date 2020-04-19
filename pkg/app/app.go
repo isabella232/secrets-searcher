@@ -14,6 +14,7 @@ import (
     interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
     "github.com/pantheon-systems/search-secrets/pkg/logwriter"
     reporterpkg "github.com/pantheon-systems/search-secrets/pkg/reporter"
+    "github.com/pantheon-systems/search-secrets/pkg/stats"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "os"
@@ -30,9 +31,8 @@ type (
         reportDir        string
         codeDir          string
         db               *database.Database
-        log              *logrus.Logger
+        log              logrus.FieldLogger
         reportArchiveDir string
-        Stats            *Stats
     }
     Config struct {
         SkipSourcePrep          bool
@@ -45,14 +45,14 @@ type (
         LatestTime              time.Time
         WhitelistPath           structures.RegexpSet
         WhitelistSecretIDSet    structures.Set
-        SkipReportSecrets       bool
         AppURL                  string
         EnableReportDebugOutput bool
         SourceConfig            *SourceConfig
         LogWriter               *logwriter.LogWriter
-        Log                     *logrus.Logger
+        Log                     logrus.FieldLogger
         ChunkSize               int
         WorkerCount             int
+        CommitSearchTimeout     time.Duration
     }
     SourceConfig struct {
         SourceProvider string
@@ -63,16 +63,11 @@ type (
         ExcludeForks   bool
         LocalDir       string
     }
-    Stats struct {
-        CommitsSearchedCount int64
-        SecretsFoundCount    int64
-        ExecutionStartTime   time.Time
-        ExecutionEndTime     time.Time
-    }
 )
 
 func New(cfg *Config) (result *App, err error) {
     startTime := time.Now()
+    log := cfg.Log
 
     // Directories
     var outputDirAbs string
@@ -110,6 +105,7 @@ func New(cfg *Config) (result *App, err error) {
         ExcludeOnesWithNoCodeChanges: true,
     }
 
+    // Debug
     if dbug.Cnf.Enabled {
         if dbug.Cnf.Filter.Repo != "" {
             repoFilter = structures.NewFilter([]string{dbug.Cnf.Filter.Repo}, nil)
@@ -123,22 +119,43 @@ func New(cfg *Config) (result *App, err error) {
         cfg.Interactive = dbug.Cnf.EnableInteract
         cfg.EnableReportDebugOutput = true
     }
-    logEntry := logrus.NewEntry(cfg.Log)
 
     // Progress bars, etc
-    interact := interactpkg.New(cfg.Interactive, cfg.LogWriter, logEntry)
+    interact := interactpkg.New(cfg.Interactive, cfg.LogWriter, log.WithField("prefix", "interact"))
 
     // Create repo provider
-    sourceProvider := buildSourceProvider(cfg.SourceConfig, repoFilter, cfg.Log)
+    sourceProvider := buildSourceProvider(cfg.SourceConfig,
+        repoFilter,
+        log.WithField("prefix", "source"),
+    )
 
     // Create code
-    code := codepkg.New(sourceProvider, repoFilter, codeDir, interact, db, logEntry)
+    code := codepkg.New(
+        sourceProvider,
+        repoFilter,
+        codeDir,
+        interact,
+        db,
+        log.WithField("prefix", "code"),
+    )
 
     // Create finder
-    finder := finderpkg.New(repoFilter, commitFilter, fileChangeFilter, cfg.ChunkSize, cfg.WorkerCount, cfg.Processors, cfg.WhitelistSecretIDSet, interact, db, logEntry)
+    finder := finderpkg.New(
+        repoFilter,
+        commitFilter,
+        fileChangeFilter,
+        cfg.ChunkSize,
+        cfg.WorkerCount,
+        cfg.CommitSearchTimeout,
+        cfg.Processors,
+        cfg.WhitelistSecretIDSet,
+        interact,
+        db,
+        log.WithField("prefix", "search"),
+    )
 
     // Create reporter
-    reporter := reporterpkg.New(reportDir, reportArchiveDir, cfg.SkipReportSecrets, cfg.AppURL, cfg.EnableReportDebugOutput, db, cfg.Log)
+    reporter := reporterpkg.New(reportDir, reportArchiveDir, cfg.AppURL, cfg.EnableReportDebugOutput, db, log.WithField("prefix", "report"), )
 
     result = &App{
         code:             code,
@@ -149,34 +166,35 @@ func New(cfg *Config) (result *App, err error) {
         reportArchiveDir: reportArchiveDir,
         codeDir:          codeDir,
         db:               db,
-        log:              cfg.Log,
-        Stats:            &Stats{},
+        log:              log.WithField("prefix", "app"),
     }
 
     return
 }
 
 func (a *App) Execute() (err error) {
-    a.Stats = &Stats{}
-    a.Stats.ExecutionStartTime = time.Now()
+    stats.AppStartTime = time.Now()
 
     if !dbug.Cnf.Enabled || dbug.Cnf.EnableCodePhase {
         if err = a.executeCodePhase(); err != nil {
             return errors.WithMessage(err, "unable to execute code phase")
         }
+        stats.CodePhaseCompleted = true
     }
     if !dbug.Cnf.Enabled || dbug.Cnf.EnableSearchPhase {
         if err = a.executeSearchPhase(); err != nil {
             return errors.WithMessage(err, "unable to execute search phase")
         }
+        stats.SearchPhaseCompleted = true
     }
     if !dbug.Cnf.Enabled || dbug.Cnf.EnableReportPhase {
         if err = a.executeReportPhase(); err != nil {
             return errors.WithMessage(err, "unable to execute reporting phase")
         }
+        stats.ReportPhaseCompleted = true
     }
 
-    a.Stats.ExecutionEndTime = time.Now()
+    stats.AppEndTime = time.Now()
 
     a.printDoneMessage()
 
@@ -189,7 +207,6 @@ func (a *App) executeCodePhase() (err error) {
         return
     }
 
-    a.log.Info("preparing repos ... ")
     err = a.code.PrepareCode()
     if err != nil {
         return errors.WithMessage(err, "unable to prepare repos")
@@ -213,14 +230,9 @@ func (a *App) executeSearchPhase() (err error) {
         }
     }
 
-    a.log.Info("finding secrets ... ")
     if err = a.finder.Search(); err != nil {
         return errors.WithMessage(err, "unable to prepare findings")
     }
-
-    // Stats
-    a.Stats.CommitsSearchedCount = a.finder.Stats.CommitsSearchedCount
-    a.Stats.SecretsFoundCount = a.finder.Stats.SecretsFoundCount
 
     return
 }
@@ -241,30 +253,50 @@ func (a *App) executeReportPhase() (err error) {
 
 func (a *App) printDoneMessage() {
     // Execution duration
-    duration := a.Stats.ExecutionEndTime.Sub(a.Stats.ExecutionStartTime)
+    duration := stats.SearchEndTime.Sub(stats.SearchStartTime)
     durationHuman := durafmt.ParseShort(duration)
 
     // Duration per commit
     var commitDuration time.Duration
-    commitDuration = time.Duration(int64(duration) / a.Stats.CommitsSearchedCount)
+    if stats.CommitsSearchedCount != 0 {
+        commitDuration = time.Duration(int64(duration) / stats.CommitsSearchedCount)
+    }
 
     a.log.Info("Command completed successfully")
-    a.log.Infof("- Secrets found:       %d", a.Stats.SecretsFoundCount)
-    a.log.Infof("- Report location:     %s", a.reportDir)
+    if stats.SearchPhaseCompleted {
+        a.log.Infof("- Secrets found:       %d", stats.SecretsFoundCount)
+    }
+    if stats.ReportPhaseCompleted {
+        a.log.Infof("- Report location:     %s", a.reportDir)
+    }
     if true || dbug.Cnf.Enabled {
-        a.log.Infof("- Commits searched:    %d", a.Stats.CommitsSearchedCount)
-        a.log.Infof("- Total duration:      %.2fs (%s)", duration.Seconds(), durationHuman)
-        a.log.Infof("- Duration per commit: %dms (%dns)",
-            commitDuration.Milliseconds(), commitDuration.Nanoseconds())
+        if stats.SearchPhaseCompleted {
+            a.log.Infof("- Search duration:     %.2fs (%s)", duration.Seconds(), durationHuman)
+            a.log.Infof("- Commits searched:    %d", stats.CommitsSearchedCount)
+            a.log.Infof("- Duration per commit: %dms (%dns)",
+                commitDuration.Milliseconds(), commitDuration.Nanoseconds())
+        }
     }
 }
 
-func buildSourceProvider(sourceConfig *SourceConfig, repoFilter *structures.Filter, log *logrus.Logger) (result codepkg.SourceProvider) {
+func buildSourceProvider(sourceConfig *SourceConfig, repoFilter *structures.Filter, log logrus.FieldLogger) (result codepkg.SourceProvider) {
     switch sourceConfig.SourceProvider {
     case source_provider.GitHub{}.New().Value():
-        result = provider.NewGithubProvider(source_provider.GitHub{}.New().Value(), sourceConfig.GithubToken, sourceConfig.Organization, repoFilter, sourceConfig.ExcludeForks, log)
+        result = provider.NewGithubProvider(
+            sourceConfig.SourceProvider,
+            sourceConfig.GithubToken,
+            sourceConfig.Organization,
+            repoFilter,
+            sourceConfig.ExcludeForks,
+            log,
+        )
     case source_provider.Local{}.New().Value():
-        result = provider.NewLocalProvider(source_provider.Local{}.New().Value(), sourceConfig.LocalDir, repoFilter, log)
+        result = provider.NewLocalProvider(
+            sourceConfig.SourceProvider,
+            sourceConfig.LocalDir,
+            repoFilter,
+            log,
+        )
     }
     return
 }
