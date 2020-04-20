@@ -11,16 +11,14 @@ import (
 
 const maxCodeLength = 2000
 
-type (
-    Writer struct {
-        whitelistSecretIDSet structures.Set
-        secretTracker        structures.Set
-        db                   *database.Database
-        log                  logrus.FieldLogger
-    }
-)
+type Writer struct {
+    whitelistSecretIDSet structures.Set
+    secretTracker        structures.Set
+    db                   *database.Database
+    log                  logrus.FieldLogger
+}
 
-func newWriter(whitelistSecretIDSet structures.Set, db *database.Database, log logrus.FieldLogger) *Writer {
+func NewWriter(whitelistSecretIDSet structures.Set, db *database.Database, log logrus.FieldLogger) *Writer {
     return &Writer{
         whitelistSecretIDSet: whitelistSecretIDSet,
         secretTracker:        structures.NewSet(nil),
@@ -29,36 +27,36 @@ func newWriter(whitelistSecretIDSet structures.Set, db *database.Database, log l
     }
 }
 
-func (f *Writer) persistResult(result *searchResult) (err error) {
-    dbCommit, dbFindings, dbSecrets, dbSecretExtras, dbFindingExtras, ok := f.buildDBObjects(result)
+func (w *Writer) persistResult(result *searchResult) (err error) {
+    dbCommit, dbFindings, dbSecrets, dbSecretExtras, dbFindingExtras, ok := w.buildDBObjects(result)
     if !ok {
         return
     }
 
-    if _, err = f.db.WriteCommitIfNotExists(dbCommit); err != nil {
+    if _, err = w.db.WriteCommitIfNotExists(dbCommit); err != nil {
         return
     }
     for _, dbSecret := range dbSecrets {
         var created bool
-        if created, err = f.db.WriteSecretIfNotExists(dbSecret); err != nil {
+        if created, err = w.db.WriteSecretIfNotExists(dbSecret); err != nil {
             return
         }
         if created {
-            f.secretTracker.Add(dbSecret.ID)
+            w.secretTracker.Add(dbSecret.ID)
         }
     }
     for _, dbFinding := range dbFindings {
-        if err = f.db.WriteFinding(dbFinding); err != nil {
+        if err = w.db.WriteFinding(dbFinding); err != nil {
             return
         }
     }
     for _, dbSecretExtra := range dbSecretExtras {
-        if err = f.db.WriteSecretExtra(dbSecretExtra); err != nil {
+        if err = w.db.WriteSecretExtra(dbSecretExtra); err != nil {
             return
         }
     }
     for _, dbFindingExtra := range dbFindingExtras {
-        if err = f.db.WriteFindingExtra(dbFindingExtra); err != nil {
+        if err = w.db.WriteFindingExtra(dbFindingExtra); err != nil {
             return
         }
     }
@@ -66,44 +64,44 @@ func (f *Writer) persistResult(result *searchResult) (err error) {
     return
 }
 
-func (f *Writer) buildDBObjects(result *searchResult) (dbCommit *database.Commit, dbFindings []*database.Finding, dbSecrets []*database.Secret, dbSecretExtras database.SecretExtras, dbFindingExtras database.FindingExtras, ok bool) {
+func (w *Writer) buildDBObjects(result *searchResult) (dbCommit *database.Commit, dbFindings []*database.Finding, dbSecrets []*database.Secret, dbSecretExtras database.SecretExtras, dbFindingExtras database.FindingExtras, ok bool) {
     var commit *database.Commit
     var secrets []*database.Secret
     var secretExtras database.SecretExtras
     var findings []*database.Finding
     var findingExtras database.FindingExtras
 
-    commit = f.buildDBCommit(result.Commit, result.RepoID)
+    commit = w.buildDBCommit(result.Commit, result.RepoID)
 
-    log := f.log.WithFields(logrus.Fields{
+    log := w.log.WithFields(logrus.Fields{
         "repo":       commit.RepoID,
         "commitHash": commit.CommitHash,
     })
 
     for _, findingResult := range result.FindingResults {
         for _, finding := range findingResult.Findings {
-            dbSecret := f.buildDBSecret(finding.Secret)
+            dbSecret := w.buildDBSecret(finding.Secret)
 
             // Check whitelist
-            if f.whitelistSecretIDSet.Contains(dbSecret.ID) {
+            if w.whitelistSecretIDSet.Contains(dbSecret.ID) {
                 log.WithField("secret", dbSecret.ID).Debug("secret whitelisted by ID, skipping finding")
                 continue
             }
 
             var dbSecretExtras database.SecretExtras
             for i, secretExtra := range finding.SecretExtras {
-                dbSecretExtras = append(dbSecretExtras, f.buildDBSecretExtra(secretExtra, dbSecret.ID, i))
+                dbSecretExtras = append(dbSecretExtras, w.buildDBSecretExtra(secretExtra, dbSecret.ID, i))
             }
 
-            dbFinding, findingErr := f.buildDBFinding(finding, result.Commit, findingResult.FileChange, dbSecret.ID, commit.ID)
+            dbFinding, findingErr := w.buildDBFinding(finding, result.Commit, findingResult.FileChange, dbSecret.ID, commit.ID)
             if findingErr != nil {
-                errors.ErrorLogger(log, findingErr).Error("unable to build finding object for database")
+                errors.ErrLog(log, findingErr).Error("unable to build finding object for database")
                 continue
             }
 
             var dbFindingExtras database.FindingExtras
             for i, findingExtra := range finding.FindingExtras {
-                dbFindingExtras = append(dbFindingExtras, f.buildDBFindingExtra(findingExtra, dbFinding.ID, i))
+                dbFindingExtras = append(dbFindingExtras, w.buildDBFindingExtra(findingExtra, dbFinding.ID, i))
             }
 
             secrets = append(secrets, dbSecret)
@@ -125,7 +123,7 @@ func (f *Writer) buildDBObjects(result *searchResult) (dbCommit *database.Commit
     return
 }
 
-func (f *Writer) buildDBCommit(commit *gitpkg.Commit, repoID string) *database.Commit {
+func (w *Writer) buildDBCommit(commit *gitpkg.Commit, repoID string) *database.Commit {
     return &database.Commit{
         ID:          database.CreateHashID(repoID, commit.Hash),
         RepoID:      repoID,
@@ -137,14 +135,14 @@ func (f *Writer) buildDBCommit(commit *gitpkg.Commit, repoID string) *database.C
     }
 }
 
-func (f *Writer) buildDBSecret(secret *ProcSecret) *database.Secret {
+func (w *Writer) buildDBSecret(secret *ProcSecret) *database.Secret {
     return &database.Secret{
         ID:    database.CreateHashID(secret.Value),
         Value: secret.Value,
     }
 }
 
-func (f *Writer) buildDBSecretExtra(extra *ProcExtra, secretID string, order int) *database.SecretExtra {
+func (w *Writer) buildDBSecretExtra(extra *ProcExtra, secretID string, order int) *database.SecretExtra {
     return &database.SecretExtra{
         ID:       database.CreateHashID(secretID, extra.Key, order),
         SecretID: secretID,
@@ -157,7 +155,7 @@ func (f *Writer) buildDBSecretExtra(extra *ProcExtra, secretID string, order int
     }
 }
 
-func (f *Writer) buildDBFindingExtra(extra *ProcExtra, findingID string, order int) *database.FindingExtra {
+func (w *Writer) buildDBFindingExtra(extra *ProcExtra, findingID string, order int) *database.FindingExtra {
     return &database.FindingExtra{
         ID:        database.CreateHashID(findingID, extra.Key, order),
         FindingID: findingID,
@@ -170,10 +168,10 @@ func (f *Writer) buildDBFindingExtra(extra *ProcExtra, findingID string, order i
     }
 }
 
-func (f *Writer) buildDBFinding(finding *ProcFinding, commit *gitpkg.Commit, fileChange *gitpkg.FileChange, secretID, commitID string) (result *database.Finding, err error) {
+func (w *Writer) buildDBFinding(finding *ProcFinding, commit *gitpkg.Commit, fileChange *gitpkg.FileChange, secretID, commitID string) (result *database.Finding, err error) {
     var code string
     var wholeFile bool
-    code, wholeFile, err = f.getCodeExcerpt(finding, commit, fileChange.Path)
+    code, wholeFile, err = w.getCodeExcerpt(finding, commit, fileChange.Path)
     if err != nil {
         err = errors.WithMessage(err, "unable to get code excerpt")
     }
@@ -203,7 +201,25 @@ func (f *Writer) buildDBFinding(finding *ProcFinding, commit *gitpkg.Commit, fil
     return
 }
 
-func (f *Writer) getCodeExcerpt(finding *ProcFinding, commit *gitpkg.Commit, path string) (result string, wholeFile bool, err error) {
+func (w *Writer) prepareFilesystem() (err error) {
+    w.log.Debug("resetting filesystem to prepare for search phase ... ")
+    searchTables := []string{
+        database.CommitTable,
+        database.FindingTable,
+        database.FindingExtrasTable,
+        database.SecretTable,
+        database.SecretExtrasTable,
+    }
+    for _, tableName := range searchTables {
+        if err = w.db.DeleteTableIfExists(tableName); err != nil {
+            return errors.WithMessagev(err, "unable to delete table", tableName)
+        }
+    }
+
+    return
+}
+
+func (w *Writer) getCodeExcerpt(finding *ProcFinding, commit *gitpkg.Commit, path string) (result string, wholeFile bool, err error) {
     var fileContents string
     fileContents, err = commit.FileContents(path)
     if err != nil {

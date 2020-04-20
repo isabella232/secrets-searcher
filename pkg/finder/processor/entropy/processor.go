@@ -66,6 +66,12 @@ func (p *Processor) FindInFileChange(fileChange *git.FileChange, _ *git.Commit, 
         return
     }
 
+    defer func() {
+        if err != nil {
+            err = errors.WithMessagev(err, "", log)
+        }
+    }()
+
     for {
         // Skip PEM files of all types
         if p.skipPEMs {
@@ -101,54 +107,14 @@ func (p *Processor) FindInFileChange(fileChange *git.FileChange, _ *git.Commit, 
             result = append(result, findings...)
         }
 
-        if err = diff.Increment(); err != nil {
-            return
+        if dErr = diff.Increment(); dErr != nil {
+            if !diffpkg.IsEOF(dErr) {
+                err = errors.WithMessage(dErr, "unable to skip PEMs")
+            }
+            break
         }
     }
 
-    return
-}
-
-func (p *Processor) skipPEMsInDiff(diff *diffpkg.Diff) (err error) {
-    for {
-        if diff.Line.CodeMatches(pemBeginHeaderRegex) {
-            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
-                return line.CodeMatches(pemEndHeaderRegex)
-            }); err != nil {
-                return
-            }
-            if err = diff.Increment(); err != nil {
-                return
-            }
-            continue
-        }
-        if diff.Line.CodeMatches(pemBeginPyMultilineRegex) {
-            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
-                return line.CodeMatches(pemEndPyMultilineRegex)
-            }); err != nil {
-                return
-            }
-            if err = diff.Increment(); err != nil {
-                return
-            }
-            continue
-        }
-        if diff.Line.CodeMatches(pemXMLStartRegex) {
-            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
-                return line.CodeMatches(pemXMLEndRegex)
-            }); err != nil {
-                return
-            }
-            continue
-        }
-        if diff.Line.CodeMatches(pemJsonLineRegex) {
-            if err = diff.Increment(); err != nil {
-                return
-            }
-            continue
-        }
-        break
-    }
     return
 }
 
@@ -211,6 +177,49 @@ func (p *Processor) findEntropyInLine(diffLine *diffpkg.Line) (result []*finder.
     return
 }
 
-func (p *Processor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
-    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
+func (p *Processor) skipPEMsInDiff(diff *diffpkg.Diff) (err error) {
+    for {
+        if diff.Line.CodeMatches(pemBeginHeaderRegex) {
+            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
+                return line.CodeMatches(pemEndHeaderRegex)
+            }); err != nil {
+                return
+            }
+            if err = diff.Increment(); err != nil {
+                return
+            }
+            continue
+        }
+        if diff.Line.CodeMatches(pemBeginPyMultilineRegex) {
+            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
+                return line.CodeMatches(pemEndPyMultilineRegex)
+            }); err != nil {
+                return
+            }
+            if err = diff.Increment(); err != nil {
+                return
+            }
+            continue
+        }
+        if diff.Line.CodeMatches(pemXMLStartRegex) {
+            if err = diff.UntilTrueIncrement(func(line *diffpkg.Line) bool {
+                return line.CodeMatches(pemXMLEndRegex)
+            }); err != nil {
+                return
+            }
+            continue
+        }
+        if diff.Line.CodeMatches(pemJsonLineRegex) {
+            if err = diff.Increment(); err != nil {
+                return
+            }
+            continue
+        }
+        break
+    }
+    return
+}
+
+func (p *Processor) isSecretWhitelisted(input string, secret *structures.LineRangeValue) bool {
+    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(input, secret.LineRange)
 }

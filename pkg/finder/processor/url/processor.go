@@ -24,6 +24,7 @@ var (
 
     skipURLStringRes = structures.NewRegexpSetFromStringsMustCompile([]string{
         `^-`,
+        `^\w+_\w+:`, // "run_local:site_uuid="
     })
 
     // TODO: url.Parse chokes on "http://username:{PASS}@..." template variables so maybe use this somehow
@@ -73,7 +74,8 @@ func (p *Processor) FindInLine(line string, log logrus.FieldLogger) (result []*f
         // Parse URL
         url, parseErr := urlpkg.Parse(urlString)
         if parseErr != nil {
-            errors.ErrorLogger(log, parseErr).Error("regex matched URL but url.Parse() could not, dropping match")
+            // If the URL parser can't figure it out, it might have template variables or something.
+            // In any case, we can probably ignore it.
             continue
         }
 
@@ -82,7 +84,7 @@ func (p *Processor) FindInLine(line string, log logrus.FieldLogger) (result []*f
 
         secrets, findErr := p.findSecretsInURL(url, urlString, lineRange.StartIndex, log)
         if findErr != nil {
-            errors.ErrorLogger(log, findErr).Error("unable to find secrets in URL, dropping match")
+            errors.ErrLog(log, findErr).Error("unable to find secrets in URL, dropping match")
             continue
         }
         if secrets == nil {
@@ -167,18 +169,17 @@ func (p *Processor) findPasswordInURL(url *urlpkg.URL, urlString string, urlStar
 }
 
 func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue) {
-    if len(url.Path) < 5 {
+    if len(url.RawPath) < 5 {
         return
     }
 
-    pathPieces := strings.Split(url.Path, "/")
+    pathPieces := strings.Split(url.RawPath, "/")
     pathPiecesLen := len(pathPieces)
 
-    pathStartIndex := strings.Index(urlString, url.Path)
+    pathStartIndex := strings.Index(urlString, url.RawPath)
     if pathStartIndex == -1 {
-        log.WithField("urlString", urlString).WithField("urlPath", url.Path).
-            WithField("urlEscapedPath", url.EscapedPath()).
-            Error("url.URL has a path but we can't find it in the original URL string")
+        log.WithField("urlString", urlString).WithField("urlPath", url.RawPath).
+            Warn("url.URL has a path but we can't find it in the original URL string")
         return
     }
 
@@ -211,7 +212,7 @@ func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log logrus.Field
 
     hasEntropy, err := entropy.HasHighEntropy(pathPiece, entropy.Base64CharsetName, secretInPathEntropyThreshold)
     if err != nil {
-        errors.ErrorLogger(log, err).Error("unable to evaluate path piece for high entropy")
+        errors.ErrLog(log, err).Error("unable to evaluate path piece for high entropy")
         return
     }
 
@@ -220,6 +221,6 @@ func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log logrus.Field
     return
 }
 
-func (p *Processor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
-    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
+func (p *Processor) isSecretWhitelisted(input string, secret *structures.LineRangeValue) bool {
+    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(input, secret.LineRange)
 }

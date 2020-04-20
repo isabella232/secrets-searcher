@@ -19,6 +19,7 @@ type (
         repoFilter     *structures.Filter
         codeDir        string
         interact       interactpkg.Interactish
+        skipSourcePrep bool
         db             *database.Database
         log            logrus.FieldLogger
     }
@@ -36,12 +37,13 @@ type (
     }
 )
 
-func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir string, interact interactpkg.Interactish, db *database.Database, log logrus.FieldLogger) *Code {
+func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir string, interact interactpkg.Interactish, skipSourcePrep bool, db *database.Database, log logrus.FieldLogger) *Code {
     return &Code{
         sourceProvider: sourceProvider,
         repoFilter:     repoFilter,
         codeDir:        codeDir,
         interact:       interact,
+        skipSourcePrep: skipSourcePrep,
         db:             db,
         log:            log,
     }
@@ -49,6 +51,11 @@ func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir s
 
 func (c *Code) PrepareCode() (err error) {
     c.log.Info("preparing repos ... ")
+
+    if c.skipSourcePrep {
+        c.log.Debug("skipping source prep ... ")
+        return
+    }
 
     var repoInfos []*RepoInfo
     repoInfos, err = c.getRepoInfos()

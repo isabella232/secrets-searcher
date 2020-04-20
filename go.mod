@@ -18,7 +18,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/sirsean/go-pool v0.0.0-20170808185629-2b94e61c3882
 	github.com/sirupsen/logrus v1.5.0
-	github.com/spf13/cobra v0.0.7
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.6.2
 	github.com/stretchr/testify v1.5.1
@@ -28,7 +27,6 @@ require (
 	golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	golang.org/x/tools v0.0.0-20190729092621-ff9f1409240a
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.4
 )

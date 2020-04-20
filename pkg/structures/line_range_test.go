@@ -72,3 +72,58 @@ func TestLineRangeOverlap_OtherWithinContextEqualIndex(t *testing.T) {
 
     require.False(t, response)
 }
+
+func TestNewLineRangeFromFileRange_Happy(t *testing.T) {
+    content := "123\n456\n789\n"
+    expected := "123\n45"
+    fileRange := NewFileRange(1, 0, 2, 2)
+
+    // Fire
+    response := NewLineRangeFromFileRange(fileRange, content)
+
+    require.Equal(t, expected, response.ExtractValue(content).Value)
+}
+
+func TestNewLineRangeFromFileRange_SecondLine(t *testing.T) {
+    content := "123\n456\n789\n"
+    expected := "456\n78"
+    fileRange := NewFileRange(2, 0, 3, 2)
+
+    // Fire
+    response := NewLineRangeFromFileRange(fileRange, content)
+
+    require.Equal(t, expected, response.ExtractValue(content).Value)
+}
+
+func TestNewLineRangeFromFileRange_LastCharIsZeroIndex(t *testing.T) {
+    content := "123\n456\n789\n"
+    expected := "123\n456\n"
+    fileRange := NewFileRange(1, 0, 3, 0)
+
+    // Fire
+    response := NewLineRangeFromFileRange(fileRange, content)
+
+    require.Equal(t, expected, response.ExtractValue(content).Value)
+}
+
+func TestNewLineRangeFromFileRange_FirstLineIsEmpty(t *testing.T) {
+    content := "123\n456\n789\n"
+    expected := "\n456\n"
+    fileRange := NewFileRange(1, 3, 3, 0)
+
+    // Fire
+    response := NewLineRangeFromFileRange(fileRange, content)
+
+    require.Equal(t, expected, response.ExtractValue(content).Value)
+}
+
+func TestNewLineRangeFromFileRange_Entire(t *testing.T) {
+    content := "123\n456\n789\n"
+    expected := "123\n456\n789\n"
+    fileRange := NewFileRange(1, 0, 4, 0)
+
+    // Fire
+    response := NewLineRangeFromFileRange(fileRange, content)
+
+    require.Equal(t, expected, response.ExtractValue(content).Value)
+}

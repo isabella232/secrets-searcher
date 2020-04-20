@@ -1,16 +1,15 @@
 package dbug
 
+var Cnf Config
+
 type (
     Config struct {
-        Enabled bool `mapstructure:"enabled"`
-
-        EnableInteract bool `mapstructure:"enable-interact"`
-
+        Enabled           bool `mapstructure:"enabled"`
+        EnableInteract    bool `mapstructure:"enable-interact"`
         EnableCodePhase   bool `mapstructure:"enable-code-phase"`
         EnableSearchPhase bool `mapstructure:"enable-search-phase"`
         EnableReportPhase bool `mapstructure:"enable-report-phase"`
-
-        Filter FilterConfig `mapstructure:"filter"`
+        FilterConfig      `mapstructure:"filter"`
     }
     FilterConfig struct {
         Processor string `mapstructure:"processor"`
@@ -20,5 +19,3 @@ type (
         Line      int    `mapstructure:"line"`
     }
 )
-
-var Cnf Config

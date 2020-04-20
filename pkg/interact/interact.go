@@ -12,7 +12,6 @@ type (
         logWriter *logwriter.LogWriter
         log       logrus.FieldLogger
     }
-    Dummy       struct{}
     Interactish interface {
         NewProgress() *progress.Progress
         SpinWhile(message string, doFunc func())
@@ -48,6 +47,8 @@ func (i *Interact) SpinWhile(message string, doFunc func()) {
     spinner.Incr()
     prog.Wait()
 }
+
+type Dummy struct{}
 
 func (d *Dummy) NewProgress() *progress.Progress {
     return nil

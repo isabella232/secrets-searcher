@@ -12,9 +12,9 @@ import (
     "html/template"
     "io/ioutil"
     "os"
-    "path"
     "path/filepath"
     "strings"
+    "time"
 )
 
 var (
@@ -26,31 +26,37 @@ var (
 )
 
 type Reporter struct {
-    dir            string
-    archiveDir     string
-    secretsDir     string
-    reportFilePath string
-    builder        *Builder
-    db             *database.Database
-    log            logrus.FieldLogger
+    reportDir         string
+    reportArchivesDir string
+    secretsDir        string
+    reportFilePath    string
+    builder           *builder
+    db                *database.Database
+    log               logrus.FieldLogger
 }
 
-func New(dir, archiveDir, appURL string, enableDebugOutput bool, db *database.Database, log logrus.FieldLogger) *Reporter {
-    secretsDir := filepath.Join(dir, "secrets")
-    reportFilePath := filepath.Join(dir, "report.html")
+func New(reportDir, reportArchivesDir, appURL string, enableDebugOutput bool, db *database.Database, log logrus.FieldLogger) *Reporter {
+    secretsDir := filepath.Join(reportDir, "secrets")
+    reportFilePath := filepath.Join(reportDir, "report.html")
 
     return &Reporter{
-        dir:            dir,
-        archiveDir:     archiveDir,
-        secretsDir:     secretsDir,
-        reportFilePath: reportFilePath,
-        builder:        NewBuilder(appURL, enableDebugOutput, db, log),
-        db:             db,
-        log:            log,
+        reportDir:         reportDir,
+        reportArchivesDir: reportArchivesDir,
+        secretsDir:        secretsDir,
+        reportFilePath:    reportFilePath,
+        builder:           newBuilder(appURL, enableDebugOutput, reportDir, secretsDir, db, log),
+        db:                db,
+        log:               log,
     }
 }
 
 func (r *Reporter) PrepareReport() (err error) {
+    r.log.Info("creating report ... ")
+
+    // Prepare fs
+    if err = r.prepareFilesystem(); err != nil {
+        return errors.WithMessage(err, "unable to create prepare filesystem for report")
+    }
 
     var data *reportData
     data, err = r.builder.buildReportData()
@@ -63,25 +69,38 @@ func (r *Reporter) PrepareReport() (err error) {
         return errors.WithMessage(err, "unable to create report file")
     }
 
-    // Output debug message
-    if data.Secrets != nil {
-        r.log.Debugf("found %d secrets", len(data.Secrets))
-    } else {
-        r.log.Debug("found no secrets")
+    if data.Secrets == nil {
         return
     }
 
     // Create secrets directory
-    if err = r.outputSecretFiles(data); err != nil {
+    if err = r.createSecretFiles(data); err != nil {
         return errors.WithMessage(err, "unable to create secret files")
     }
 
     // Copy report directory archive
-    r.log.Debugf("copying %s to %s ...", r.dir, r.archiveDir)
-    if err = copy.Copy(r.dir, r.archiveDir); err != nil {
-        return errors.Wrapv(err, "", r.dir, r.archiveDir)
+    archiveDirname := fmt.Sprintf("report-%s", time.Now().Format("2006-01-02_15-04-05"))
+    archiveDir := filepath.Join(r.reportArchivesDir, archiveDirname)
+    r.log.Debugf("copying %s to %s ...", r.reportDir, archiveDir)
+    if err = copy.Copy(r.reportDir, archiveDir); err != nil {
+        return errors.Wrapv(err, "", r.reportDir, r.reportArchivesDir)
     }
 
+    return
+}
+
+func (r *Reporter) prepareFilesystem() (err error) {
+    r.log.Debug("resetting report directory ... ")
+
+    if err = os.RemoveAll(r.reportDir); err != nil {
+        return errors.Wrapv(err, "unable to delete report directory", r.reportDir)
+    }
+    if err = os.MkdirAll(r.reportDir, 0700); err != nil {
+        return errors.Wrapv(err, "unable to create report directory", r.reportDir)
+    }
+    if err = os.MkdirAll(r.reportArchivesDir, 0700); err != nil {
+        return errors.Wrapv(err, "unable to create report archives directory", r.reportDir)
+    }
     return
 }
 
@@ -103,7 +122,7 @@ func (r *Reporter) createReportFile(data *reportData) (err error) {
     return
 }
 
-func (r *Reporter) outputSecretFiles(data *reportData) (err error) {
+func (r *Reporter) createSecretFiles(data *reportData) (err error) {
     if err = os.MkdirAll(r.secretsDir, 0700); err != nil {
         return errors.Wrapv(err, "unable to create secrets directory", r.secretsDir)
     }
@@ -113,18 +132,18 @@ func (r *Reporter) outputSecretFiles(data *reportData) (err error) {
         // Paths
         secretDir := filepath.Join(r.secretsDir, sData.ID)
 
-        // Create directory if necenssary
+        // Create secret directory if necenssary
         if err = os.MkdirAll(secretDir, 0700); err != nil {
             return errors.Wrapv(err, "unable to create secret directory", secretDir)
         }
 
-        err = r.outputSecretValueFile(sData)
+        err = r.outputSecretValueFileAndAddLink(sData, secretDir)
         if err != nil {
             err = errors.Wrap(err, "unable to create file")
             return
         }
 
-        err = r.outputSecretMetadataFiles(sData)
+        err = r.outputSecretMetadataFile(sData, secretDir)
         if err != nil {
             err = errors.Wrap(err, "unable to create file")
             return
@@ -134,71 +153,46 @@ func (r *Reporter) outputSecretFiles(data *reportData) (err error) {
     return
 }
 
-func (r *Reporter) outputSecretValueFile(sData secretData) (err error) {
-    var savePath string
-    var fileContents string
-    savePath, fileContents, err = r.getSecretValueContents(sData)
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file contents")
-    }
-
-    if savePath == "" {
-        // We don't have a finding that has the code taking up the whole file
+func (r *Reporter) outputSecretValueFileAndAddLink(sData *secretData, secretDir string) (err error) {
+    if sData.ValueFilePath == "" {
         return
     }
 
-    // Paths
-    secretDir := filepath.Join(r.secretsDir, sData.ID)
-    filePath := filepath.Join(secretDir, path.Base(savePath))
-
     // Create file
     var f *os.File
-    f, err = os.Create(filePath)
+    f, err = os.Create(sData.ValueFilePath)
     if err != nil {
-        err = errors.Wrapv(err, "unable to create file", filePath)
+        err = errors.Wrapv(err, "unable to create file", sData.ValueFilePath)
         return
     }
     defer f.Close()
 
-    _, err = f.WriteString(fileContents)
+    _, err = f.WriteString(sData.Value)
     if err != nil {
-        err = errors.Wrapv(err, "unable to write to file", filePath)
+        err = errors.Wrapv(err, "unable to write to file", sData.ValueFilePath)
         return
     }
 
     return
 }
 
-func (r *Reporter) outputSecretMetadataFiles(sData secretData) (err error) {
-    dirPath := filepath.Join(r.secretsDir, sData.ID)
-    filePath := filepath.Join(dirPath, fmt.Sprintf("secret-%s.yaml", sData.ID))
+func (r *Reporter) outputSecretMetadataFile(sData *secretData, secretDir string) (err error) {
 
-    // Create directory if necenssary
-    if err = os.MkdirAll(dirPath, 0700); err != nil {
-        return errors.Wrapv(err, "unable to create secret directory", dirPath)
-    }
+    // File path
+    filePath := filepath.Join(secretDir, fmt.Sprintf("secret-%s.yaml", sData.ID))
 
+    // Marshal secret data to YAML bytes
     var bytes []byte
     bytes, err = yaml.Marshal(sData)
     if err != nil {
         return errors.WithMessage(err, "unable to marshal secret into YAML")
     }
 
+    // Write to file
     err = ioutil.WriteFile(filePath, bytes, 0644)
     if err != nil {
         return errors.WithMessagev(err, "unable to write secret", sData.ID, filePath)
     }
 
-    return
-}
-
-func (r *Reporter) getSecretValueContents(sData secretData) (fileContents, savePath string, err error) {
-    for _, findingData := range sData.Findings {
-        if findingData.CodeIsFile {
-            fileContents = findingData.Code
-            savePath = findingData.FilePath
-            break
-        }
-    }
     return
 }

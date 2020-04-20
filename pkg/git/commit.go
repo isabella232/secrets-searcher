@@ -96,7 +96,6 @@ func (c *Commit) FileChanges(filter *FileChangeFilter) (result []*FileChange, er
 
     // Are we going to get
     if !c.CanDiff() {
-        err = errors.New("cannot diff")
         return
     }
 

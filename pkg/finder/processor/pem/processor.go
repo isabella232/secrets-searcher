@@ -12,36 +12,43 @@ import (
 )
 
 type Processor struct {
-    name               string
-    pemType            PEMTypeEnum
-    header             string
-    footer             string
-    oneLineJSONPattern *regexp.Regexp
-    whitelistCodeRes   structures.RegexpSet
+    name                      string
+    pemType                   PEMTypeEnum
+    header                    string
+    footer                    string
+    oneLineKeyRe              *regexp.Regexp
+    oneLineKeyTooPermissiveRe *regexp.Regexp
+    oneLineEscapedStringKeyRe *regexp.Regexp
+    whitelistCodeRes          *structures.RegexpSet
 }
 
-func NewProcessor(name string, pemType PEMTypeEnum) (result *Processor) {
+func NewProcessor(name string, pemType PEMTypeEnum, whitelistCodeRes *structures.RegexpSet) (result *Processor) {
     header := fmt.Sprintf("-----BEGIN %s-----", pemType.Value())
     footer := fmt.Sprintf("-----END %s-----", pemType.Value())
 
-    oneLineJSONPattern := regexp.MustCompile(`: *\"-----BEGIN ` + header + `-----\\n(.*)\\n` + footer + `\\n\",?$`)
+    oneLineKeyRe := regexp.MustCompile(header + `\\n(.*)\\n` + footer)
+    oneLineKeyTooPermissiveRe := regexp.MustCompile(`-BEGIN ` + pemType.Value() + `-(.*)-END ` + pemType.Value() + `-`)
 
-    whitelistCodeRes := structures.NewRegexpSetFromStringsMustCompile([]string{
+    oneLineEscapedStringKeyRe := regexp.MustCompile(`"` + header + `\\n(.*)\\n` + footer + `\\?n?"`)
+
+    *whitelistCodeRes = append(*whitelistCodeRes, structures.NewRegexpSetFromStringsMustCompile([]string{
         // Incomplete/invalid/example keys
         // FIXME: These are too specific to Pantheon findings and should/can be generalized
         header + `.{43}` + footer + ``,
         `"` + header + `\n.{6}\.\.\."`,
         header + `,$`,
         `with ` + header,
-    })
+    })...)
 
     return &Processor{
-        name:               name,
-        pemType:            pemType,
-        header:             header,
-        footer:             footer,
-        oneLineJSONPattern: oneLineJSONPattern,
-        whitelistCodeRes:   whitelistCodeRes,
+        name:                      name,
+        pemType:                   pemType,
+        header:                    header,
+        footer:                    footer,
+        oneLineKeyRe:              oneLineKeyRe,
+        oneLineKeyTooPermissiveRe: oneLineKeyTooPermissiveRe,
+        oneLineEscapedStringKeyRe: oneLineEscapedStringKeyRe,
+        whitelistCodeRes:          whitelistCodeRes,
     }
 }
 
@@ -62,17 +69,19 @@ func (p *Processor) FindInFileChange(fileChange *git.FileChange, commit *git.Com
     }
 
     search := &search{
-        pemType:            p.pemType,
-        header:             p.header,
-        footer:             p.footer,
-        oneLineJSONPattern: p.oneLineJSONPattern,
-        whitelistCodeRes:   p.whitelistCodeRes,
-        fileChange:         fileChange,
-        commit:             commit,
-        diff:               diff,
-        findings:           &result,
-        ignore:             &ignore,
-        log:                log,
+        pemType:                   p.pemType,
+        header:                    p.header,
+        footer:                    p.footer,
+        oneLineKeyRe:              p.oneLineKeyRe,
+        oneLineKeyTooPermissiveRe: p.oneLineKeyTooPermissiveRe,
+        oneLineEscapedStringKeyRe: p.oneLineEscapedStringKeyRe,
+        whitelistCodeRes:          p.whitelistCodeRes,
+        fileChange:                fileChange,
+        commit:                    commit,
+        diff:                      diff,
+        findings:                  &result,
+        ignores:                   &ignore,
+        log:                       log,
     }
     err = search.find()
 

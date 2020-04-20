@@ -4,6 +4,7 @@ import (
     "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/dbug"
+    diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/git/diff_operation"
@@ -15,17 +16,22 @@ import (
 )
 
 type (
-    search struct {
+    Search struct {
+        *searchTarget
         name                string
-        payload             *searchParameters
         processors          []Processor
-        whitelistPath       structures.RegexpSet
         fileChangeFilter    *gitpkg.FileChangeFilter
         commitSearchTimeout time.Duration
         bar                 *progress.Bar
         out                 chan *searchResult
-        db                  *database.Database
         log                 logrus.FieldLogger
+    }
+    searchTarget struct {
+        repo         *database.Repo
+        repository   *gitpkg.Repository
+        commits      []*gitpkg.Commit
+        commitHashes []string
+        oldest       string
     }
     searchResult struct {
         RepoID         string
@@ -45,16 +51,16 @@ type (
         Name() string
     }
     ProcFinding struct {
+        Secret *ProcSecret
+        *structures.FileRange
         ProcessorName string
-        FileRange     *structures.FileRange
-        Secret        *ProcSecret
         SecretExtras  []*ProcExtra
         FindingExtras []*ProcExtra
     }
     ProcFindingInLine struct {
+        Secret *ProcSecret
+        *structures.LineRange
         ProcessorName string
-        LineRange     *structures.LineRange
-        Secret        *ProcSecret
         SecretExtras  []*ProcExtra
         FindingExtras []*ProcExtra
     }
@@ -70,31 +76,43 @@ type (
     }
 )
 
-func NewSearch(out chan *searchResult, name string, payload *searchParameters, processors []Processor, fileChangeFilter *gitpkg.FileChangeFilter, commitSearchTimeout time.Duration, bar *progress.Bar, db *database.Database, log logrus.FieldLogger) search {
-    return search{
+func newSearch(
+    out chan *searchResult,
+    name string,
+    searchTarget *searchTarget,
+    processors []Processor,
+    fileChangeFilter *gitpkg.FileChangeFilter,
+    commitSearchTimeout time.Duration,
+    bar *progress.Bar,
+    log logrus.FieldLogger,
+) Search {
+    return Search{
+        searchTarget:        searchTarget,
         out:                 out,
         name:                name,
-        payload:             payload,
         processors:          processors,
         fileChangeFilter:    fileChangeFilter,
         commitSearchTimeout: commitSearchTimeout,
         bar:                 bar,
-        db:                  db,
         log:                 log,
     }
 }
 
-func (s search) Perform() {
-    defer errors.CatchPanicDo(func(err error) {s.logError(err, s.log, "error during search job") })
+func (s Search) Name() string {
+    return s.name
+}
+
+func (s Search) Perform() {
+    defer errors.CatchPanicDo(func(err error) { s.logError(err, s.log, "error during search job") })
 
     s.log.Debug("start worker")
 
     var err error
 
     var commits []*gitpkg.Commit
-    commits, err = s.payload.getCommits()
+    commits, err = getCommitsFromTarget(s.searchTarget)
     if err != nil {
-        errors.ErrorLogger(s.log, err).Error("error retrieving commits from payload")
+        errors.ErrLog(s.log, err).Error("error retrieving commits from search target")
         return
     }
 
@@ -113,22 +131,22 @@ func (s search) Perform() {
 
             var findingResults []*searchFindingResult
             if findingResults, err = s.findInCommit(commit, commitLog); err != nil {
-                errors.ErrorLogger(s.log, err).Error("error while processing commit")
+                errors.ErrLog(s.log, err).Error("error while processing commit")
                 return
             }
 
             s.out <- &searchResult{
-                RepoID:         s.payload.repo.ID,
+                RepoID:         s.searchTarget.repo.ID,
                 Commit:         commit,
                 FindingResults: findingResults,
             }
         }()
     }
 
-    s.log.Debug("ending worker")
+    s.log.Debug("end worker")
 }
 
-func (s search) findInCommitTimeout(commit *gitpkg.Commit, log logrus.FieldLogger) (result []*searchFindingResult, err error) {
+func (s Search) findInCommitTimeout(commit *gitpkg.Commit, log logrus.FieldLogger) (result []*searchFindingResult, err error) {
     retChan := make(chan []*searchFindingResult, 1)
     errChan := make(chan error, 1)
 
@@ -155,8 +173,8 @@ func (s search) findInCommitTimeout(commit *gitpkg.Commit, log logrus.FieldLogge
     return
 }
 
-func (s search) findInCommit(commit *gitpkg.Commit, log logrus.FieldLogger) (result []*searchFindingResult, err error) {
-    defer errors.CatchPanicDo(func(err error) {s.logError(err, log, "error during commit search") })
+func (s Search) findInCommit(commit *gitpkg.Commit, log logrus.FieldLogger) (result []*searchFindingResult, err error) {
+    defer errors.CatchPanicDo(func(err error) { s.logError(err, log, "error during commit search") })
 
     log.WithField("commitDate", commit.Date.Format("2006-01-02")).Debug("searching commit")
 
@@ -195,8 +213,8 @@ func (s search) findInCommit(commit *gitpkg.Commit, log logrus.FieldLogger) (res
     return
 }
 
-func (s search) findInFileChange(comm *gitpkg.Commit, fileChange *gitpkg.FileChange, log logrus.FieldLogger) (result *searchFindingResult, err error) {
-    defer errors.CatchPanicDo(func(err error) {s.logError(err, log, "error during file change search") })
+func (s Search) findInFileChange(comm *gitpkg.Commit, fileChange *gitpkg.FileChange, log logrus.FieldLogger) (result *searchFindingResult, err error) {
+    defer errors.CatchPanicDo(func(err error) { s.logError(err, log, "error during file change search") })
 
     var findings []*ProcFinding
     var ignore []*structures.FileRange
@@ -269,10 +287,11 @@ func (s search) findInFileChange(comm *gitpkg.Commit, fileChange *gitpkg.FileCha
     return
 }
 
-func (s search) findInFileChangeWithProcessor(commit *gitpkg.Commit, fileChange *gitpkg.FileChange, processor Processor, log logrus.FieldLogger, findings *[]*ProcFinding, ignore *[]*structures.FileRange) (err error) {
+func (s Search) findInFileChangeWithProcessor(commit *gitpkg.Commit, fileChange *gitpkg.FileChange, processor Processor, log logrus.FieldLogger, findings *[]*ProcFinding, ignore *[]*structures.FileRange) (err error) {
     var fileFindings []*ProcFinding
     var ign []*structures.FileRange
     fileFindings, ign, err = processor.FindInFileChange(fileChange, commit, log)
+    err = diffpkg.EOFErrFilter(err, log)
     if err != nil {
         err = errors.WithMessagev(err, "unable to search in file change using processor", processor.Name())
         return
@@ -289,22 +308,23 @@ func (s search) findInFileChangeWithProcessor(commit *gitpkg.Commit, fileChange 
     return
 }
 
-func (s search) findInLineWithProcessor(line string, processor Processor, currFileLineNum int, log logrus.FieldLogger, findings *[]*ProcFinding, ignore *[]*structures.FileRange) (err error) {
-    if dbug.Cnf.Enabled && strings.Contains(dbug.Cnf.Filter.Processor, processor.Name()) &&
-        dbug.Cnf.Filter.Line > -1 && currFileLineNum == dbug.Cnf.Filter.Line {
+func (s Search) findInLineWithProcessor(line string, processor Processor, currFileLineNum int, log logrus.FieldLogger, findings *[]*ProcFinding, ignore *[]*structures.FileRange) (err error) {
+    if dbug.Cnf.Enabled && strings.Contains(dbug.Cnf.FilterConfig.Processor, processor.Name()) &&
+        dbug.Cnf.FilterConfig.Line > -1 && currFileLineNum == dbug.Cnf.FilterConfig.Line {
         fmt.Print("") // For breakpoint
     }
 
     var lineFindings []*ProcFindingInLine
     var ign []*structures.LineRange
     lineFindings, ign, err = processor.FindInLine(line, log)
+    err = diffpkg.EOFErrFilter(err, log)
     if err != nil {
         err = errors.WithMessagev(err, "unable to find in line using processor", processor.Name())
         return
     }
 
     for _, lineFinding := range lineFindings {
-        finding := NewFindingFromLineFinding(lineFinding, currFileLineNum)
+        finding := newFindingFromLineFinding(lineFinding, currFileLineNum)
         if !shouldKeep(finding, *findings, *ignore) {
             continue
         }
@@ -318,8 +338,8 @@ func (s search) findInLineWithProcessor(line string, processor Processor, currFi
     return
 }
 
-func (s search) logError(err error, log logrus.FieldLogger, message string) {
-    log = errors.ErrorLogger(log, err)
+func (s Search) logError(err error, log logrus.FieldLogger, message string) {
+    log = errors.ErrLog(log, err)
     if s.bar != nil {
         s.bar.BustThrough(func() { log.Error(message) })
         return
@@ -327,7 +347,30 @@ func (s search) logError(err error, log logrus.FieldLogger, message string) {
     log.Error(message)
 }
 
-func NewFindingFromLineFinding(finding *ProcFindingInLine, fileLineNum int) *ProcFinding {
+func getCommitsFromTarget(target *searchTarget) (result []*gitpkg.Commit, err error) {
+    if target.commits != nil {
+        result = target.commits
+        return
+    }
+
+    result = make([]*gitpkg.Commit, len(target.commitHashes))
+    for i, commitHash := range target.commitHashes {
+        var commit *gitpkg.Commit
+        commit, err = target.repository.Commit(commitHash)
+        if err != nil {
+            err = errors.WithMessagev(err, "unable to get commit", commitHash)
+            return
+        }
+        commit.Oldest = commit.Hash == target.oldest
+        result[i] = commit
+    }
+
+    target.commits = result
+
+    return
+}
+
+func newFindingFromLineFinding(finding *ProcFindingInLine, fileLineNum int) *ProcFinding {
     return &ProcFinding{
         ProcessorName: finding.ProcessorName,
         FileRange:     structures.NewFileRangeFromLineRange(finding.LineRange, fileLineNum),

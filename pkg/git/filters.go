@@ -10,6 +10,7 @@ type (
         Hashes               structures.Set
         EarliestTime         time.Time
         LatestTime           time.Time
+        LatestTimeSet        bool
         EarliestCommit       string
         LatestCommit         string
         ExcludeNoDiffCommits bool
@@ -22,6 +23,25 @@ type (
         ExcludeOnesWithNoCodeChanges bool
     }
 )
+
+func NewCommitFilter(
+    hashes structures.Set,
+    earliestTime time.Time,
+    latestTime time.Time,
+    earliestCommit string,
+    latestCommit string,
+    excludeNoDiffCommits bool,
+) (result *CommitFilter) {
+    return &CommitFilter{
+        Hashes:               structures.NewSet(nil),
+        EarliestTime:         time.Time{},
+        LatestTime:           time.Time{},
+        LatestTimeSet:        false,
+        EarliestCommit:       "",
+        LatestCommit:         "",
+        ExcludeNoDiffCommits: false,
+    }
+}
 
 func (cf *CommitFilter) OldestCommitIsIncluded() (result bool) {
     return cf.EarliestCommit == "" && cf.EarliestTime.IsZero()
@@ -58,4 +78,10 @@ func (cf *CommitFilter) IsIncludedInLogResults(commit *Commit, hashSet *structur
 func (cf *CommitFilter) IsIncluded(commit *Commit) (result bool) {
     result, _ = cf.IsIncludedInLogResults(commit, nil)
     return
+}
+
+func (cf *CommitFilter) IncludesAll() bool {
+    return cf.EarliestTime.IsZero() && cf.LatestTime.IsZero() &&
+        cf.EarliestCommit == "" && cf.LatestCommit == "" &&
+        cf.Hashes.IsEmpty()
 }

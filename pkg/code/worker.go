@@ -24,7 +24,7 @@ type worker struct {
 
 func (w worker) Perform() {
     if err := w.prepareRepo(w.repoInfo); err != nil {
-        errors.ErrorLogger(w.log, errors.WithMessagev(err, "unable to prepare repo", w.repoInfo.Name))
+        errors.ErrLog(w.log, errors.WithMessagev(err, "unable to prepare repo", w.repoInfo.Name))
     }
 }
 

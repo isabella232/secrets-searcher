@@ -420,3 +420,20 @@ func (d *Database) GetSecretExtrasSortedGroupedBySecretID() (result SecretExtraG
 
     return
 }
+
+// RepoCommitsCache
+
+func (d *Database) GetRepoCommitsCache(id string) (result *RepoCommitsCache, err error) {
+    err = d.read(RepoCommitsCacheTable, id, &result)
+    return
+}
+
+func (d *Database) WriteRepoCommitsCache(obj *RepoCommitsCache) (err error) {
+    err = d.write(RepoCommitsCacheTable, obj.RepoName, obj)
+    return
+}
+
+func (d *Database) DeleteRepoCommitsCache(id string) (err error) {
+    err = d.delete(RepoCommitsCacheTable, id)
+    return
+}

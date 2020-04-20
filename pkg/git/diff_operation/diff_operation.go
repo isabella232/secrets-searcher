@@ -4,9 +4,9 @@ package diff_operation
 
 // DiffOperationEnum is the the enum interface that can be used
 type DiffOperationEnum interface {
-	String() string
-	Value() diffOperationValue
-	uniqueDiffOperationMethod()
+    String() string
+    Value() diffOperationValue
+    uniqueDiffOperationMethod()
 }
 
 // diffOperationEnumBase is the internal, non-exported type
@@ -18,6 +18,18 @@ func (eb diffOperationEnumBase) Value() diffOperationValue { return eb.value }
 // String() returns the enum name as you use it in Go code,
 // needs to be overriden by inheriting types
 func (eb diffOperationEnumBase) String() string { return "" }
+
+// Add is the enum type for 'valueAdd' value
+type Add struct{ diffOperationEnumBase }
+
+// New is the constructor for a brand new DiffOperationEnum with value 'valueAdd'
+func (Add) New() DiffOperationEnum { return Add{diffOperationEnumBase{valueAdd}} }
+
+// String returns always "Add" for this enum type
+func (Add) String() string { return "Add" }
+
+// uniqueDiffOperationMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (Add) uniqueDiffOperationMethod() {}
 
 // Equal is the enum type for 'valueEqual' value
 type Equal struct{ diffOperationEnumBase }
@@ -43,22 +55,10 @@ func (Delete) String() string { return "Delete" }
 // uniqueDiffOperationMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (Delete) uniqueDiffOperationMethod() {}
 
-// Add is the enum type for 'valueAdd' value
-type Add struct{ diffOperationEnumBase }
-
-// New is the constructor for a brand new DiffOperationEnum with value 'valueAdd'
-func (Add) New() DiffOperationEnum { return Add{diffOperationEnumBase{valueAdd}} }
-
-// String returns always "Add" for this enum type
-func (Add) String() string { return "Add" }
-
-// uniqueDiffOperationMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (Add) uniqueDiffOperationMethod() {}
-
 var internalDiffOperationEnumValues = []DiffOperationEnum{
-	Equal{}.New(),
-	Delete{}.New(),
-	Add{}.New(),
+    Add{}.New(),
+    Equal{}.New(),
+    Delete{}.New(),
 }
 
 // DiffOperationEnumValues will return a slice of all allowed enum value types
@@ -66,22 +66,22 @@ func DiffOperationEnumValues() []DiffOperationEnum { return internalDiffOperatio
 
 // NewDiffOperationFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewDiffOperationFromValue(v diffOperationValue) (result DiffOperationEnum) {
-	switch v {
-	case valueEqual:
-		result = Equal{}.New()
-	case valueDelete:
-		result = Delete{}.New()
-	case valueAdd:
-		result = Add{}.New()
-	}
-	return
+    switch v {
+    case valueAdd:
+        result = Add{}.New()
+    case valueEqual:
+        result = Equal{}.New()
+    case valueDelete:
+        result = Delete{}.New()
+    }
+    return
 }
 
 // MustGetDiffOperationFromValue is the same as NewDiffOperationFromValue, but will panic in case of conversion failure
 func MustGetDiffOperationFromValue(v diffOperationValue) DiffOperationEnum {
-	result := NewDiffOperationFromValue(v)
-	if result == nil {
-		panic("invalid DiffOperationEnum value cast")
-	}
-	return result
+    result := NewDiffOperationFromValue(v)
+    if result == nil {
+        panic("invalid DiffOperationEnum value cast")
+    }
+    return result
 }

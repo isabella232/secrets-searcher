@@ -4,9 +4,9 @@ package pem
 
 // PEMTypeEnum is the the enum interface that can be used
 type PEMTypeEnum interface {
-	String() string
-	Value() string
-	uniquePEMTypeMethod()
+    String() string
+    Value() string
+    uniquePEMTypeMethod()
 }
 
 // pEMTypeEnumBase is the internal, non-exported type
@@ -18,66 +18,6 @@ func (eb pEMTypeEnumBase) Value() string { return eb.value }
 // String() returns the enum name as you use it in Go code,
 // needs to be overriden by inheriting types
 func (eb pEMTypeEnumBase) String() string { return "" }
-
-// OpenSSHPrivateKey is the enum type for 'valueOpenSSHPrivateKey' value
-type OpenSSHPrivateKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueOpenSSHPrivateKey'
-func (OpenSSHPrivateKey) New() PEMTypeEnum { return OpenSSHPrivateKey{pEMTypeEnumBase{valueOpenSSHPrivateKey}} }
-
-// String returns always "OpenSSHPrivateKey" for this enum type
-func (OpenSSHPrivateKey) String() string { return "OpenSSHPrivateKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (OpenSSHPrivateKey) uniquePEMTypeMethod() {}
-
-// NewCertificateRequest is the enum type for 'valueNewCertificateRequest' value
-type NewCertificateRequest struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueNewCertificateRequest'
-func (NewCertificateRequest) New() PEMTypeEnum { return NewCertificateRequest{pEMTypeEnumBase{valueNewCertificateRequest}} }
-
-// String returns always "NewCertificateRequest" for this enum type
-func (NewCertificateRequest) String() string { return "NewCertificateRequest" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (NewCertificateRequest) uniquePEMTypeMethod() {}
-
-// AnyPrivateKey is the enum type for 'valueAnyPrivateKey' value
-type AnyPrivateKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueAnyPrivateKey'
-func (AnyPrivateKey) New() PEMTypeEnum { return AnyPrivateKey{pEMTypeEnumBase{valueAnyPrivateKey}} }
-
-// String returns always "AnyPrivateKey" for this enum type
-func (AnyPrivateKey) String() string { return "AnyPrivateKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (AnyPrivateKey) uniquePEMTypeMethod() {}
-
-// DSAPublicKey is the enum type for 'valueDSAPublicKey' value
-type DSAPublicKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueDSAPublicKey'
-func (DSAPublicKey) New() PEMTypeEnum { return DSAPublicKey{pEMTypeEnumBase{valueDSAPublicKey}} }
-
-// String returns always "DSAPublicKey" for this enum type
-func (DSAPublicKey) String() string { return "DSAPublicKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (DSAPublicKey) uniquePEMTypeMethod() {}
-
-// SSLSessionParameters is the enum type for 'valueSSLSessionParameters' value
-type SSLSessionParameters struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueSSLSessionParameters'
-func (SSLSessionParameters) New() PEMTypeEnum { return SSLSessionParameters{pEMTypeEnumBase{valueSSLSessionParameters}} }
-
-// String returns always "SSLSessionParameters" for this enum type
-func (SSLSessionParameters) String() string { return "SSLSessionParameters" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (SSLSessionParameters) uniquePEMTypeMethod() {}
 
 // DSAParameters is the enum type for 'valueDSAParameters' value
 type DSAParameters struct{ pEMTypeEnumBase }
@@ -91,29 +31,59 @@ func (DSAParameters) String() string { return "DSAParameters" }
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (DSAParameters) uniquePEMTypeMethod() {}
 
-// ECPrivateKey is the enum type for 'valueECPrivateKey' value
-type ECPrivateKey struct{ pEMTypeEnumBase }
+// PGPPrivateKeyBlock is the enum type for 'valuePGPPrivateKeyBlock' value
+type PGPPrivateKeyBlock struct{ pEMTypeEnumBase }
 
-// New is the constructor for a brand new PEMTypeEnum with value 'valueECPrivateKey'
-func (ECPrivateKey) New() PEMTypeEnum { return ECPrivateKey{pEMTypeEnumBase{valueECPrivateKey}} }
+// New is the constructor for a brand new PEMTypeEnum with value 'valuePGPPrivateKeyBlock'
+func (PGPPrivateKeyBlock) New() PEMTypeEnum {
+    return PGPPrivateKeyBlock{pEMTypeEnumBase{valuePGPPrivateKeyBlock}}
+}
 
-// String returns always "ECPrivateKey" for this enum type
-func (ECPrivateKey) String() string { return "ECPrivateKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (ECPrivateKey) uniquePEMTypeMethod() {}
-
-// CMS is the enum type for 'valueCMS' value
-type CMS struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueCMS'
-func (CMS) New() PEMTypeEnum { return CMS{pEMTypeEnumBase{valueCMS}} }
-
-// String returns always "CMS" for this enum type
-func (CMS) String() string { return "CMS" }
+// String returns always "PGPPrivateKeyBlock" for this enum type
+func (PGPPrivateKeyBlock) String() string { return "PGPPrivateKeyBlock" }
 
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (CMS) uniquePEMTypeMethod() {}
+func (PGPPrivateKeyBlock) uniquePEMTypeMethod() {}
+
+// DHParameters is the enum type for 'valueDHParameters' value
+type DHParameters struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueDHParameters'
+func (DHParameters) New() PEMTypeEnum { return DHParameters{pEMTypeEnumBase{valueDHParameters}} }
+
+// String returns always "DHParameters" for this enum type
+func (DHParameters) String() string { return "DHParameters" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (DHParameters) uniquePEMTypeMethod() {}
+
+// SSLSessionParameters is the enum type for 'valueSSLSessionParameters' value
+type SSLSessionParameters struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueSSLSessionParameters'
+func (SSLSessionParameters) New() PEMTypeEnum {
+    return SSLSessionParameters{pEMTypeEnumBase{valueSSLSessionParameters}}
+}
+
+// String returns always "SSLSessionParameters" for this enum type
+func (SSLSessionParameters) String() string { return "SSLSessionParameters" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (SSLSessionParameters) uniquePEMTypeMethod() {}
+
+// TrustedCertificate is the enum type for 'valueTrustedCertificate' value
+type TrustedCertificate struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueTrustedCertificate'
+func (TrustedCertificate) New() PEMTypeEnum {
+    return TrustedCertificate{pEMTypeEnumBase{valueTrustedCertificate}}
+}
+
+// String returns always "TrustedCertificate" for this enum type
+func (TrustedCertificate) String() string { return "TrustedCertificate" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (TrustedCertificate) uniquePEMTypeMethod() {}
 
 // Certificate is the enum type for 'valueCertificate' value
 type Certificate struct{ pEMTypeEnumBase }
@@ -127,59 +97,13 @@ func (Certificate) String() string { return "Certificate" }
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (Certificate) uniquePEMTypeMethod() {}
 
-// CertificateRequest is the enum type for 'valueCertificateRequest' value
-type CertificateRequest struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueCertificateRequest'
-func (CertificateRequest) New() PEMTypeEnum { return CertificateRequest{pEMTypeEnumBase{valueCertificateRequest}} }
-
-// String returns always "CertificateRequest" for this enum type
-func (CertificateRequest) String() string { return "CertificateRequest" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (CertificateRequest) uniquePEMTypeMethod() {}
-
-// RSAPrivateKey is the enum type for 'valueRSAPrivateKey' value
-type RSAPrivateKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueRSAPrivateKey'
-func (RSAPrivateKey) New() PEMTypeEnum { return RSAPrivateKey{pEMTypeEnumBase{valueRSAPrivateKey}} }
-
-// String returns always "RSAPrivateKey" for this enum type
-func (RSAPrivateKey) String() string { return "RSAPrivateKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (RSAPrivateKey) uniquePEMTypeMethod() {}
-
-// PKCS6SignedData is the enum type for 'valuePKCS6SignedData' value
-type PKCS6SignedData struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valuePKCS6SignedData'
-func (PKCS6SignedData) New() PEMTypeEnum { return PKCS6SignedData{pEMTypeEnumBase{valuePKCS6SignedData}} }
-
-// String returns always "PKCS6SignedData" for this enum type
-func (PKCS6SignedData) String() string { return "PKCS6SignedData" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (PKCS6SignedData) uniquePEMTypeMethod() {}
-
-// EncryptedPrivateKey is the enum type for 'valueEncryptedPrivateKey' value
-type EncryptedPrivateKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueEncryptedPrivateKey'
-func (EncryptedPrivateKey) New() PEMTypeEnum { return EncryptedPrivateKey{pEMTypeEnumBase{valueEncryptedPrivateKey}} }
-
-// String returns always "EncryptedPrivateKey" for this enum type
-func (EncryptedPrivateKey) String() string { return "EncryptedPrivateKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (EncryptedPrivateKey) uniquePEMTypeMethod() {}
-
 // X509Certificate is the enum type for 'valueX509Certificate' value
 type X509Certificate struct{ pEMTypeEnumBase }
 
 // New is the constructor for a brand new PEMTypeEnum with value 'valueX509Certificate'
-func (X509Certificate) New() PEMTypeEnum { return X509Certificate{pEMTypeEnumBase{valueX509Certificate}} }
+func (X509Certificate) New() PEMTypeEnum {
+    return X509Certificate{pEMTypeEnumBase{valueX509Certificate}}
+}
 
 // String returns always "X509Certificate" for this enum type
 func (X509Certificate) String() string { return "X509Certificate" }
@@ -187,17 +111,19 @@ func (X509Certificate) String() string { return "X509Certificate" }
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (X509Certificate) uniquePEMTypeMethod() {}
 
-// DSAPrivateKey is the enum type for 'valueDSAPrivateKey' value
-type DSAPrivateKey struct{ pEMTypeEnumBase }
+// PKCS6SignedData is the enum type for 'valuePKCS6SignedData' value
+type PKCS6SignedData struct{ pEMTypeEnumBase }
 
-// New is the constructor for a brand new PEMTypeEnum with value 'valueDSAPrivateKey'
-func (DSAPrivateKey) New() PEMTypeEnum { return DSAPrivateKey{pEMTypeEnumBase{valueDSAPrivateKey}} }
+// New is the constructor for a brand new PEMTypeEnum with value 'valuePKCS6SignedData'
+func (PKCS6SignedData) New() PEMTypeEnum {
+    return PKCS6SignedData{pEMTypeEnumBase{valuePKCS6SignedData}}
+}
 
-// String returns always "DSAPrivateKey" for this enum type
-func (DSAPrivateKey) String() string { return "DSAPrivateKey" }
+// String returns always "PKCS6SignedData" for this enum type
+func (PKCS6SignedData) String() string { return "PKCS6SignedData" }
 
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (DSAPrivateKey) uniquePEMTypeMethod() {}
+func (PKCS6SignedData) uniquePEMTypeMethod() {}
 
 // ECDSAPublicKey is the enum type for 'valueECDSAPublicKey' value
 type ECDSAPublicKey struct{ pEMTypeEnumBase }
@@ -211,29 +137,79 @@ func (ECDSAPublicKey) String() string { return "ECDSAPublicKey" }
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (ECDSAPublicKey) uniquePEMTypeMethod() {}
 
-// PGPPrivateKeyBlock is the enum type for 'valuePGPPrivateKeyBlock' value
-type PGPPrivateKeyBlock struct{ pEMTypeEnumBase }
+// CMS is the enum type for 'valueCMS' value
+type CMS struct{ pEMTypeEnumBase }
 
-// New is the constructor for a brand new PEMTypeEnum with value 'valuePGPPrivateKeyBlock'
-func (PGPPrivateKeyBlock) New() PEMTypeEnum { return PGPPrivateKeyBlock{pEMTypeEnumBase{valuePGPPrivateKeyBlock}} }
+// New is the constructor for a brand new PEMTypeEnum with value 'valueCMS'
+func (CMS) New() PEMTypeEnum { return CMS{pEMTypeEnumBase{valueCMS}} }
 
-// String returns always "PGPPrivateKeyBlock" for this enum type
-func (PGPPrivateKeyBlock) String() string { return "PGPPrivateKeyBlock" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (PGPPrivateKeyBlock) uniquePEMTypeMethod() {}
-
-// X509CRL is the enum type for 'valueX509CRL' value
-type X509CRL struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueX509CRL'
-func (X509CRL) New() PEMTypeEnum { return X509CRL{pEMTypeEnumBase{valueX509CRL}} }
-
-// String returns always "X509CRL" for this enum type
-func (X509CRL) String() string { return "X509CRL" }
+// String returns always "CMS" for this enum type
+func (CMS) String() string { return "CMS" }
 
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (X509CRL) uniquePEMTypeMethod() {}
+func (CMS) uniquePEMTypeMethod() {}
+
+// DSAPublicKey is the enum type for 'valueDSAPublicKey' value
+type DSAPublicKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueDSAPublicKey'
+func (DSAPublicKey) New() PEMTypeEnum { return DSAPublicKey{pEMTypeEnumBase{valueDSAPublicKey}} }
+
+// String returns always "DSAPublicKey" for this enum type
+func (DSAPublicKey) String() string { return "DSAPublicKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (DSAPublicKey) uniquePEMTypeMethod() {}
+
+// PublicKey is the enum type for 'valuePublicKey' value
+type PublicKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valuePublicKey'
+func (PublicKey) New() PEMTypeEnum { return PublicKey{pEMTypeEnumBase{valuePublicKey}} }
+
+// String returns always "PublicKey" for this enum type
+func (PublicKey) String() string { return "PublicKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (PublicKey) uniquePEMTypeMethod() {}
+
+// RSAPrivateKey is the enum type for 'valueRSAPrivateKey' value
+type RSAPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueRSAPrivateKey'
+func (RSAPrivateKey) New() PEMTypeEnum { return RSAPrivateKey{pEMTypeEnumBase{valueRSAPrivateKey}} }
+
+// String returns always "RSAPrivateKey" for this enum type
+func (RSAPrivateKey) String() string { return "RSAPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (RSAPrivateKey) uniquePEMTypeMethod() {}
+
+// ECParameters is the enum type for 'valueECParameters' value
+type ECParameters struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueECParameters'
+func (ECParameters) New() PEMTypeEnum { return ECParameters{pEMTypeEnumBase{valueECParameters}} }
+
+// String returns always "ECParameters" for this enum type
+func (ECParameters) String() string { return "ECParameters" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (ECParameters) uniquePEMTypeMethod() {}
+
+// NewCertificateRequest is the enum type for 'valueNewCertificateRequest' value
+type NewCertificateRequest struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueNewCertificateRequest'
+func (NewCertificateRequest) New() PEMTypeEnum {
+    return NewCertificateRequest{pEMTypeEnumBase{valueNewCertificateRequest}}
+}
+
+// String returns always "NewCertificateRequest" for this enum type
+func (NewCertificateRequest) String() string { return "NewCertificateRequest" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (NewCertificateRequest) uniquePEMTypeMethod() {}
 
 // RSAPublicKey is the enum type for 'valueRSAPublicKey' value
 type RSAPublicKey struct{ pEMTypeEnumBase }
@@ -246,6 +222,110 @@ func (RSAPublicKey) String() string { return "RSAPublicKey" }
 
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (RSAPublicKey) uniquePEMTypeMethod() {}
+
+// ECPrivateKey is the enum type for 'valueECPrivateKey' value
+type ECPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueECPrivateKey'
+func (ECPrivateKey) New() PEMTypeEnum { return ECPrivateKey{pEMTypeEnumBase{valueECPrivateKey}} }
+
+// String returns always "ECPrivateKey" for this enum type
+func (ECPrivateKey) String() string { return "ECPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (ECPrivateKey) uniquePEMTypeMethod() {}
+
+// Parameters is the enum type for 'valueParameters' value
+type Parameters struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueParameters'
+func (Parameters) New() PEMTypeEnum { return Parameters{pEMTypeEnumBase{valueParameters}} }
+
+// String returns always "Parameters" for this enum type
+func (Parameters) String() string { return "Parameters" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (Parameters) uniquePEMTypeMethod() {}
+
+// OpenSSHPrivateKey is the enum type for 'valueOpenSSHPrivateKey' value
+type OpenSSHPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueOpenSSHPrivateKey'
+func (OpenSSHPrivateKey) New() PEMTypeEnum {
+    return OpenSSHPrivateKey{pEMTypeEnumBase{valueOpenSSHPrivateKey}}
+}
+
+// String returns always "OpenSSHPrivateKey" for this enum type
+func (OpenSSHPrivateKey) String() string { return "OpenSSHPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (OpenSSHPrivateKey) uniquePEMTypeMethod() {}
+
+// CertificateRequest is the enum type for 'valueCertificateRequest' value
+type CertificateRequest struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueCertificateRequest'
+func (CertificateRequest) New() PEMTypeEnum {
+    return CertificateRequest{pEMTypeEnumBase{valueCertificateRequest}}
+}
+
+// String returns always "CertificateRequest" for this enum type
+func (CertificateRequest) String() string { return "CertificateRequest" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (CertificateRequest) uniquePEMTypeMethod() {}
+
+// DSAPrivateKey is the enum type for 'valueDSAPrivateKey' value
+type DSAPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueDSAPrivateKey'
+func (DSAPrivateKey) New() PEMTypeEnum { return DSAPrivateKey{pEMTypeEnumBase{valueDSAPrivateKey}} }
+
+// String returns always "DSAPrivateKey" for this enum type
+func (DSAPrivateKey) String() string { return "DSAPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (DSAPrivateKey) uniquePEMTypeMethod() {}
+
+// EncryptedPrivateKey is the enum type for 'valueEncryptedPrivateKey' value
+type EncryptedPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueEncryptedPrivateKey'
+func (EncryptedPrivateKey) New() PEMTypeEnum {
+    return EncryptedPrivateKey{pEMTypeEnumBase{valueEncryptedPrivateKey}}
+}
+
+// String returns always "EncryptedPrivateKey" for this enum type
+func (EncryptedPrivateKey) String() string { return "EncryptedPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (EncryptedPrivateKey) uniquePEMTypeMethod() {}
+
+// X942DHParameters is the enum type for 'valueX942DHParameters' value
+type X942DHParameters struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueX942DHParameters'
+func (X942DHParameters) New() PEMTypeEnum {
+    return X942DHParameters{pEMTypeEnumBase{valueX942DHParameters}}
+}
+
+// String returns always "X942DHParameters" for this enum type
+func (X942DHParameters) String() string { return "X942DHParameters" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (X942DHParameters) uniquePEMTypeMethod() {}
+
+// AnyPrivateKey is the enum type for 'valueAnyPrivateKey' value
+type AnyPrivateKey struct{ pEMTypeEnumBase }
+
+// New is the constructor for a brand new PEMTypeEnum with value 'valueAnyPrivateKey'
+func (AnyPrivateKey) New() PEMTypeEnum { return AnyPrivateKey{pEMTypeEnumBase{valueAnyPrivateKey}} }
+
+// String returns always "AnyPrivateKey" for this enum type
+func (AnyPrivateKey) String() string { return "AnyPrivateKey" }
+
+// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
+func (AnyPrivateKey) uniquePEMTypeMethod() {}
 
 // PKCS6 is the enum type for 'valuePKCS6' value
 type PKCS6 struct{ pEMTypeEnumBase }
@@ -271,106 +351,46 @@ func (PrivateKey) String() string { return "PrivateKey" }
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
 func (PrivateKey) uniquePEMTypeMethod() {}
 
-// ECParameters is the enum type for 'valueECParameters' value
-type ECParameters struct{ pEMTypeEnumBase }
+// X509CRL is the enum type for 'valueX509CRL' value
+type X509CRL struct{ pEMTypeEnumBase }
 
-// New is the constructor for a brand new PEMTypeEnum with value 'valueECParameters'
-func (ECParameters) New() PEMTypeEnum { return ECParameters{pEMTypeEnumBase{valueECParameters}} }
+// New is the constructor for a brand new PEMTypeEnum with value 'valueX509CRL'
+func (X509CRL) New() PEMTypeEnum { return X509CRL{pEMTypeEnumBase{valueX509CRL}} }
 
-// String returns always "ECParameters" for this enum type
-func (ECParameters) String() string { return "ECParameters" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (ECParameters) uniquePEMTypeMethod() {}
-
-// Parameters is the enum type for 'valueParameters' value
-type Parameters struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueParameters'
-func (Parameters) New() PEMTypeEnum { return Parameters{pEMTypeEnumBase{valueParameters}} }
-
-// String returns always "Parameters" for this enum type
-func (Parameters) String() string { return "Parameters" }
+// String returns always "X509CRL" for this enum type
+func (X509CRL) String() string { return "X509CRL" }
 
 // uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (Parameters) uniquePEMTypeMethod() {}
-
-// X942DHParameters is the enum type for 'valueX942DHParameters' value
-type X942DHParameters struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueX942DHParameters'
-func (X942DHParameters) New() PEMTypeEnum { return X942DHParameters{pEMTypeEnumBase{valueX942DHParameters}} }
-
-// String returns always "X942DHParameters" for this enum type
-func (X942DHParameters) String() string { return "X942DHParameters" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (X942DHParameters) uniquePEMTypeMethod() {}
-
-// TrustedCertificate is the enum type for 'valueTrustedCertificate' value
-type TrustedCertificate struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueTrustedCertificate'
-func (TrustedCertificate) New() PEMTypeEnum { return TrustedCertificate{pEMTypeEnumBase{valueTrustedCertificate}} }
-
-// String returns always "TrustedCertificate" for this enum type
-func (TrustedCertificate) String() string { return "TrustedCertificate" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (TrustedCertificate) uniquePEMTypeMethod() {}
-
-// PublicKey is the enum type for 'valuePublicKey' value
-type PublicKey struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valuePublicKey'
-func (PublicKey) New() PEMTypeEnum { return PublicKey{pEMTypeEnumBase{valuePublicKey}} }
-
-// String returns always "PublicKey" for this enum type
-func (PublicKey) String() string { return "PublicKey" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (PublicKey) uniquePEMTypeMethod() {}
-
-// DHParameters is the enum type for 'valueDHParameters' value
-type DHParameters struct{ pEMTypeEnumBase }
-
-// New is the constructor for a brand new PEMTypeEnum with value 'valueDHParameters'
-func (DHParameters) New() PEMTypeEnum { return DHParameters{pEMTypeEnumBase{valueDHParameters}} }
-
-// String returns always "DHParameters" for this enum type
-func (DHParameters) String() string { return "DHParameters" }
-
-// uniquePEMTypeMethod() guarantees that the enum interface cannot be mis-assigned with others defined with an otherwise identical signature
-func (DHParameters) uniquePEMTypeMethod() {}
+func (X509CRL) uniquePEMTypeMethod() {}
 
 var internalPEMTypeEnumValues = []PEMTypeEnum{
-	OpenSSHPrivateKey{}.New(),
-	NewCertificateRequest{}.New(),
-	AnyPrivateKey{}.New(),
-	DSAPublicKey{}.New(),
-	SSLSessionParameters{}.New(),
-	DSAParameters{}.New(),
-	ECPrivateKey{}.New(),
-	CMS{}.New(),
-	Certificate{}.New(),
-	CertificateRequest{}.New(),
-	RSAPrivateKey{}.New(),
-	PKCS6SignedData{}.New(),
-	EncryptedPrivateKey{}.New(),
-	X509Certificate{}.New(),
-	DSAPrivateKey{}.New(),
-	ECDSAPublicKey{}.New(),
-	PGPPrivateKeyBlock{}.New(),
-	X509CRL{}.New(),
-	RSAPublicKey{}.New(),
-	PKCS6{}.New(),
-	PrivateKey{}.New(),
-	ECParameters{}.New(),
-	Parameters{}.New(),
-	X942DHParameters{}.New(),
-	TrustedCertificate{}.New(),
-	PublicKey{}.New(),
-	DHParameters{}.New(),
+    DSAParameters{}.New(),
+    PGPPrivateKeyBlock{}.New(),
+    DHParameters{}.New(),
+    SSLSessionParameters{}.New(),
+    TrustedCertificate{}.New(),
+    Certificate{}.New(),
+    X509Certificate{}.New(),
+    PKCS6SignedData{}.New(),
+    ECDSAPublicKey{}.New(),
+    CMS{}.New(),
+    DSAPublicKey{}.New(),
+    PublicKey{}.New(),
+    RSAPrivateKey{}.New(),
+    ECParameters{}.New(),
+    NewCertificateRequest{}.New(),
+    RSAPublicKey{}.New(),
+    ECPrivateKey{}.New(),
+    Parameters{}.New(),
+    OpenSSHPrivateKey{}.New(),
+    CertificateRequest{}.New(),
+    DSAPrivateKey{}.New(),
+    EncryptedPrivateKey{}.New(),
+    X942DHParameters{}.New(),
+    AnyPrivateKey{}.New(),
+    PKCS6{}.New(),
+    PrivateKey{}.New(),
+    X509CRL{}.New(),
 }
 
 // PEMTypeEnumValues will return a slice of all allowed enum value types
@@ -378,70 +398,70 @@ func PEMTypeEnumValues() []PEMTypeEnum { return internalPEMTypeEnumValues[:] }
 
 // NewPEMTypeFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewPEMTypeFromValue(v string) (result PEMTypeEnum) {
-	switch v {
-	case valueOpenSSHPrivateKey:
-		result = OpenSSHPrivateKey{}.New()
-	case valueNewCertificateRequest:
-		result = NewCertificateRequest{}.New()
-	case valueAnyPrivateKey:
-		result = AnyPrivateKey{}.New()
-	case valueDSAPublicKey:
-		result = DSAPublicKey{}.New()
-	case valueSSLSessionParameters:
-		result = SSLSessionParameters{}.New()
-	case valueDSAParameters:
-		result = DSAParameters{}.New()
-	case valueECPrivateKey:
-		result = ECPrivateKey{}.New()
-	case valueCMS:
-		result = CMS{}.New()
-	case valueCertificate:
-		result = Certificate{}.New()
-	case valueCertificateRequest:
-		result = CertificateRequest{}.New()
-	case valueRSAPrivateKey:
-		result = RSAPrivateKey{}.New()
-	case valuePKCS6SignedData:
-		result = PKCS6SignedData{}.New()
-	case valueEncryptedPrivateKey:
-		result = EncryptedPrivateKey{}.New()
-	case valueX509Certificate:
-		result = X509Certificate{}.New()
-	case valueDSAPrivateKey:
-		result = DSAPrivateKey{}.New()
-	case valueECDSAPublicKey:
-		result = ECDSAPublicKey{}.New()
-	case valuePGPPrivateKeyBlock:
-		result = PGPPrivateKeyBlock{}.New()
-	case valueX509CRL:
-		result = X509CRL{}.New()
-	case valueRSAPublicKey:
-		result = RSAPublicKey{}.New()
-	case valuePKCS6:
-		result = PKCS6{}.New()
-	case valuePrivateKey:
-		result = PrivateKey{}.New()
-	case valueECParameters:
-		result = ECParameters{}.New()
-	case valueParameters:
-		result = Parameters{}.New()
-	case valueX942DHParameters:
-		result = X942DHParameters{}.New()
-	case valueTrustedCertificate:
-		result = TrustedCertificate{}.New()
-	case valuePublicKey:
-		result = PublicKey{}.New()
-	case valueDHParameters:
-		result = DHParameters{}.New()
-	}
-	return
+    switch v {
+    case valueDSAParameters:
+        result = DSAParameters{}.New()
+    case valuePGPPrivateKeyBlock:
+        result = PGPPrivateKeyBlock{}.New()
+    case valueDHParameters:
+        result = DHParameters{}.New()
+    case valueSSLSessionParameters:
+        result = SSLSessionParameters{}.New()
+    case valueTrustedCertificate:
+        result = TrustedCertificate{}.New()
+    case valueCertificate:
+        result = Certificate{}.New()
+    case valueX509Certificate:
+        result = X509Certificate{}.New()
+    case valuePKCS6SignedData:
+        result = PKCS6SignedData{}.New()
+    case valueECDSAPublicKey:
+        result = ECDSAPublicKey{}.New()
+    case valueCMS:
+        result = CMS{}.New()
+    case valueDSAPublicKey:
+        result = DSAPublicKey{}.New()
+    case valuePublicKey:
+        result = PublicKey{}.New()
+    case valueRSAPrivateKey:
+        result = RSAPrivateKey{}.New()
+    case valueECParameters:
+        result = ECParameters{}.New()
+    case valueNewCertificateRequest:
+        result = NewCertificateRequest{}.New()
+    case valueRSAPublicKey:
+        result = RSAPublicKey{}.New()
+    case valueECPrivateKey:
+        result = ECPrivateKey{}.New()
+    case valueParameters:
+        result = Parameters{}.New()
+    case valueOpenSSHPrivateKey:
+        result = OpenSSHPrivateKey{}.New()
+    case valueCertificateRequest:
+        result = CertificateRequest{}.New()
+    case valueDSAPrivateKey:
+        result = DSAPrivateKey{}.New()
+    case valueEncryptedPrivateKey:
+        result = EncryptedPrivateKey{}.New()
+    case valueX942DHParameters:
+        result = X942DHParameters{}.New()
+    case valueAnyPrivateKey:
+        result = AnyPrivateKey{}.New()
+    case valuePKCS6:
+        result = PKCS6{}.New()
+    case valuePrivateKey:
+        result = PrivateKey{}.New()
+    case valueX509CRL:
+        result = X509CRL{}.New()
+    }
+    return
 }
 
 // MustGetPEMTypeFromValue is the same as NewPEMTypeFromValue, but will panic in case of conversion failure
 func MustGetPEMTypeFromValue(v string) PEMTypeEnum {
-	result := NewPEMTypeFromValue(v)
-	if result == nil {
-		panic("invalid PEMTypeEnum value cast")
-	}
-	return result
+    result := NewPEMTypeFromValue(v)
+    if result == nil {
+        panic("invalid PEMTypeEnum value cast")
+    }
+    return result
 }

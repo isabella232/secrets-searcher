@@ -5,6 +5,7 @@ import (
     "fmt"
     "github.com/nanobox-io/golang-scribble"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
+    "github.com/sirupsen/logrus"
     "os"
     "path/filepath"
     "sync"
@@ -15,24 +16,18 @@ type Database struct {
     mutex   sync.Mutex
     mutexes map[string]*sync.Mutex
     driver  *scribble.Driver
+    log     logrus.FieldLogger
 }
 
 type Object interface{}
 
-func New(dir string) (database *Database, err error) {
-    var driver *scribble.Driver
-    driver, err = scribble.New(dir, nil)
-    if err != nil {
-        err = errors.Wrapv(err, "unable to create new database driver for directory", dir)
-        return
-    }
-
-    database = &Database{
+func New(dir string, driver *scribble.Driver, log logrus.FieldLogger) (database *Database) {
+    return &Database{
         dir:     dir,
         mutexes: make(map[string]*sync.Mutex),
         driver:  driver,
+        log:     log,
     }
-    return
 }
 
 func (d *Database) TableExists(collection string) bool {

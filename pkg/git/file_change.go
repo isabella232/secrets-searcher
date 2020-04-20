@@ -143,6 +143,10 @@ func (fcc *FileChange) HasCodeChanges() (result bool, err error) {
     return
 }
 
+func (fcc *FileChange) FileContents() (result string, err error) {
+    return fcc.commit.FileContents(fcc.Path)
+}
+
 func (fcc *FileChange) getGitPatch() (result *gitobject.Patch, err error) {
     defer errors.CatchPanicSetErr(&err, "unable to retrieve patch")
 

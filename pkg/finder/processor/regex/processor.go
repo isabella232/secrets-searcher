@@ -51,6 +51,6 @@ func (p *Processor) FindInLine(line string, _ logrus.FieldLogger) (result []*fin
     return
 }
 
-func (p *Processor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
-    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
+func (p *Processor) isSecretWhitelisted(input string, secret *structures.LineRangeValue) bool {
+    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(input, secret.LineRange)
 }

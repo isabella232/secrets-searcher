@@ -14,49 +14,52 @@ import (
 )
 
 type (
-    Builder struct {
+    builder struct {
         appURL            string
         enableDebugOutput bool
+        reportDir         string
+        secretsDir        string
         db                *database.Database
         log               logrus.FieldLogger
     }
     reportData struct {
         ReportDate        time.Time
-        AppURL            string
+        AppLink           linkData
         Repos             []string
         DbgEnabled        bool
-        Secrets           []secretData
+        Secrets           []*secretData
         EnableDebugOutput bool
     }
     secretData struct {
-        ID       string        `yaml:"secret-id"`
-        Value    string        `yaml:"value"`
-        ValueLen int           `yaml:"-"`
-        Extras   []extraData   `yaml:"extras"`
-        Findings []findingData `yaml:"findings"`
+        ID            string         `yaml:"secret-id"`
+        Value         string         `yaml:"value"`
+        ValueLen      int            `yaml:"-"`
+        ValueFilePath string         `yaml:"-"`
+        Extras        []*extraData   `yaml:"extras"`
+        Findings      []*findingData `yaml:"findings"`
     }
     findingData struct {
-        ID                  string      `yaml:"finding-id"`
-        ProcessorName       string      `yaml:"processor"`
-        RepoName            string      `yaml:"-"`
-        RepoFullLink        linkData    `yaml:"repo"`
-        CommitHash          string      `yaml:"-"`
-        CommitHashLink      linkData    `yaml:"commit"`
-        CommitHashLinkShort linkData    `yaml:"-"`
-        CommitDate          time.Time   `yaml:"commit-date"`
-        CommitAuthorEmail   string      `yaml:"-"`
-        CommitAuthorFull    string      `yaml:"commit-author"`
-        FilePath            string      `yaml:"-"`
-        FileLineLink        linkData    `yaml:"file-location"`
-        FileLineLinkShort   linkData    `yaml:"-"`
-        ColStartIndex       int         `yaml:"col-start-index"`
-        ColEndIndex         int         `yaml:"col-end-index"`
-        CodeShort           string      `yaml:"-"`
-        Code                string      `yaml:"-"`
-        CodeIsFile          bool        `yaml:"code-is-whole-file"`
-        CodeTrimmed         string      `yaml:"code"`
-        CodeShowGuide       bool        `yaml:"-"`
-        Extras              []extraData `yaml:"extras"`
+        ID                  string       `yaml:"finding-id"`
+        ProcessorName       string       `yaml:"processor"`
+        RepoName            string       `yaml:"-"`
+        RepoFullLink        linkData     `yaml:"repo"`
+        CommitHash          string       `yaml:"-"`
+        CommitHashLink      linkData     `yaml:"commit"`
+        CommitHashLinkShort linkData     `yaml:"-"`
+        CommitDate          time.Time    `yaml:"commit-date"`
+        CommitAuthorEmail   string       `yaml:"-"`
+        CommitAuthorFull    string       `yaml:"commit-author"`
+        FilePath            string       `yaml:"-"`
+        FileLineLink        linkData     `yaml:"file-location"`
+        FileLineLinkShort   linkData     `yaml:"-"`
+        ColStartIndex       int          `yaml:"col-start-index"`
+        ColEndIndex         int          `yaml:"col-end-index"`
+        CodeShort           string       `yaml:"-"`
+        Code                string       `yaml:"-"`
+        CodeIsFile          bool         `yaml:"code-is-whole-file"`
+        CodeTrimmed         string       `yaml:"code"`
+        CodeShowGuide       bool         `yaml:"-"`
+        Extras              []*extraData `yaml:"extras"`
     }
     extraData struct {
         Key    string    `yaml:"key"`
@@ -73,16 +76,18 @@ type (
     }
 )
 
-func NewBuilder(appURL string, enableDebugOutput bool, db *database.Database, log logrus.FieldLogger) *Builder {
-    return &Builder{
+func newBuilder(appURL string, enableDebugOutput bool, reportDir, secretsDir string, db *database.Database, log logrus.FieldLogger) *builder {
+    return &builder{
         appURL:            appURL,
         enableDebugOutput: enableDebugOutput,
+        reportDir:         reportDir,
+        secretsDir:        secretsDir,
         db:                db,
         log:               log,
     }
 }
 
-func (b *Builder) buildReportData() (result *reportData, err error) {
+func (b *builder) buildReportData() (result *reportData, err error) {
     b.log.Debug("getting list of secrets ...")
     var ok bool
 
@@ -114,7 +119,7 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
         return
     }
 
-    var reportSecrets []secretData
+    var reportSecrets []*secretData
     for _, secret := range secrets {
         var findings []*database.Finding
         findings, ok = findingsBySecret[secret.ID]
@@ -133,7 +138,7 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
             return
         }
 
-        reportSecrets = append(reportSecrets, *secretData)
+        reportSecrets = append(reportSecrets, secretData)
     }
 
     repos := structures.NewSet(nil)
@@ -147,7 +152,7 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
 
     result = &reportData{
         ReportDate:        time.Now(),
-        AppURL:            b.appURL,
+        AppLink:           linkData{URL: b.appURL, Label: b.appURL},
         Repos:             repoNames,
         EnableDebugOutput: b.enableDebugOutput,
         Secrets:           reportSecrets,
@@ -156,13 +161,13 @@ func (b *Builder) buildReportData() (result *reportData, err error) {
     return
 }
 
-func (b *Builder) buildSecretData(secret *database.Secret, secretExtras database.SecretExtras, findings []*database.Finding, findingExtrasByFindingID database.FindingExtraGroups) (result *secretData, err error) {
-    var findingDatas []findingData
+func (b *builder) buildSecretData(secret *database.Secret, secretExtras database.SecretExtras, findings []*database.Finding, findingExtrasByFindingID database.FindingExtraGroups) (result *secretData, err error) {
+    var findingDatas []*findingData
     for _, finding := range findings {
         var findingExtras database.FindingExtras
         findingExtras, _ = findingExtrasByFindingID[finding.ID]
 
-        var findingData findingData
+        var findingData *findingData
         findingData, err = b.buildFindingData(finding, findingExtras)
         if err != nil {
             err = errors.WithMessage(err, "unable to build finding data")
@@ -172,26 +177,56 @@ func (b *Builder) buildSecretData(secret *database.Secret, secretExtras database
         findingDatas = append(findingDatas, findingData)
     }
 
-    var secretExtraDatas []extraData
+    var secretExtraDatas []*extraData
     for _, secretExtra := range secretExtras {
         secretExtraDatas = append(secretExtraDatas, b.buildSecretExtraData(secretExtra))
+    }
+
+    // Link to the raw file
+    var valueFilePath string
+    secretValueFilePath := b.getSecretValueFilePath(findingDatas)
+    if secretValueFilePath != "" {
+        secretValueFileBasename := path.Base(secretValueFilePath)
+        secretDirRel := strings.TrimPrefix(b.secretsDir, b.reportDir)[1:]
+        url := path.Join(secretDirRel, secret.ID, secretValueFileBasename)
+
+        valueFilePath = filepath.Join(b.secretsDir, secret.ID, secretValueFileBasename)
+
+        secretExtraDatas = append(secretExtraDatas, &extraData{
+            Key:    "raw-file",
+            Header: "Raw file",
+            Link: &linkData{
+                Label: secretValueFileBasename,
+                URL:   url,
+            },
+        })
     }
 
     // Sort findings by commit date
     sort.Slice(findingDatas, func(i, j int) bool { return findingDatas[i].CommitDate.Before(findingDatas[j].CommitDate) })
 
     result = &secretData{
-        ID:       secret.ID,
-        Value:    secret.Value,
-        ValueLen: len(secret.Value),
-        Extras:   secretExtraDatas,
-        Findings: findingDatas,
+        ID:            secret.ID,
+        Value:         secret.Value,
+        ValueLen:      len(secret.Value),
+        ValueFilePath: valueFilePath,
+        Extras:        secretExtraDatas,
+        Findings:      findingDatas,
     }
 
     return
 }
 
-func (b *Builder) buildFindingData(finding *database.Finding, findingExtras database.FindingExtras) (result findingData, err error) {
+func (b *builder) getSecretValueFilePath(findingDatas []*findingData) (result string) {
+    for _, findingData := range findingDatas {
+        if findingData.CodeIsFile {
+            return findingData.FilePath
+        }
+    }
+    return
+}
+
+func (b *builder) buildFindingData(finding *database.Finding, findingExtras database.FindingExtras) (result *findingData, err error) {
     var commit *database.Commit
     commit, err = b.db.GetCommit(finding.CommitID)
     if err != nil {
@@ -206,13 +241,13 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
         return
     }
 
-    var findingExtraDatas []extraData
+    var findingExtraDatas []*extraData
     for _, findingExtra := range findingExtras {
         findingExtraData := b.buildFindingExtraData(findingExtra)
         findingExtraDatas = append(findingExtraDatas, findingExtraData)
     }
     if b.enableDebugOutput {
-        findingExtraDatas = append(findingExtraDatas, extraData{
+        findingExtraDatas = append(findingExtraDatas, &extraData{
             Key:    "dbug-config",
             Header: "Debug config",
             Value:  b.buildDbugConfig(repo, commit, finding),
@@ -229,7 +264,7 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
     fileLineLink := linkData{Label: fileLineLabel, URL: fileLineURL}
     fileLineLinkShort := linkData{Label: fileLineLabelShort, URL: fileLineURL, Tooltip: fileLineLabel}
 
-    result = findingData{
+    result = &findingData{
         ID:                  finding.ID,
         ProcessorName:       finding.Processor,
         RepoName:            repo.Name,
@@ -246,6 +281,7 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
         ColStartIndex:       finding.StartIndex,
         ColEndIndex:         finding.EndIndex,
         Code:                finding.Code,
+        CodeIsFile:          finding.CodeIsFile,
         CodeTrimmed:         strings.TrimRight(finding.Code, "\n"),
         CodeShowGuide:       finding.StartLineNum == finding.EndLineNum,
         Extras:              findingExtraDatas,
@@ -254,7 +290,7 @@ func (b *Builder) buildFindingData(finding *database.Finding, findingExtras data
     return
 }
 
-func (b *Builder) getFileLineLabels(finding *database.Finding) (label, labelShort string) {
+func (b *builder) getFileLineLabels(finding *database.Finding) (label, labelShort string) {
 
     // "file.go"
     filePathShort := filepath.Base(finding.Path)
@@ -271,13 +307,13 @@ func (b *Builder) getFileLineLabels(finding *database.Finding) (label, labelShor
     return
 }
 
-func (b *Builder) buildFindingExtraData(extra *database.FindingExtra) extraData {
+func (b *builder) buildFindingExtraData(extra *database.FindingExtra) *extraData {
     var link *linkData
     if extra.URL != "" {
         link = b.buildExtraLink(extra.Value, extra.URL)
     }
 
-    return extraData{
+    return &extraData{
         Key:    extra.Key,
         Header: extra.Header,
         Value:  extra.Value,
@@ -286,13 +322,13 @@ func (b *Builder) buildFindingExtraData(extra *database.FindingExtra) extraData 
     }
 }
 
-func (b *Builder) buildSecretExtraData(extra *database.SecretExtra) extraData {
+func (b *builder) buildSecretExtraData(extra *database.SecretExtra) *extraData {
     var link *linkData
     if extra.URL != "" {
         link = b.buildExtraLink(extra.Value, extra.URL)
     }
 
-    return extraData{
+    return &extraData{
         Key:    extra.Key,
         Header: extra.Header,
         Value:  extra.Value,
@@ -301,14 +337,14 @@ func (b *Builder) buildSecretExtraData(extra *database.SecretExtra) extraData {
     }
 }
 
-func (b *Builder) buildExtraLink(label, url string) (result *linkData) {
+func (b *builder) buildExtraLink(label, url string) (result *linkData) {
     if url != "" {
         return &linkData{label, url, ""}
     }
     return
 }
 
-func (b *Builder) buildDbugConfig(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
+func (b *builder) buildDbugConfig(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
     var sb strings.Builder
     fmt.Fprintf(&sb, "  filter:\n")
     fmt.Fprintf(&sb, "    repo: '%s'\n", repo.Name)

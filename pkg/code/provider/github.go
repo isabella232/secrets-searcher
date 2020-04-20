@@ -7,29 +7,24 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
-    "golang.org/x/oauth2"
 )
 
 const perPage = 100
 
 type GithubProvider struct {
     name         string
-    client       *github.Client
     organization string
+    client       *github.Client
     repoFilter   *structures.Filter
     excludeForks bool
     log          logrus.FieldLogger
 }
 
-func NewGithubProvider(name, apiToken, organization string, repoFilter *structures.Filter, excludeForks bool, log logrus.FieldLogger) *GithubProvider {
-    ctx := context.Background()
-    tc := oauth2.NewClient(ctx, oauth2.StaticTokenSource(&oauth2.Token{AccessToken: apiToken}))
-    client := github.NewClient(tc)
-
+func NewGithubProvider(name, organization string, client *github.Client, repoFilter *structures.Filter, excludeForks bool, log logrus.FieldLogger) *GithubProvider {
     return &GithubProvider{
         name:         name,
-        client:       client,
         organization: organization,
+        client:       client,
         repoFilter:   repoFilter,
         excludeForks: excludeForks,
         log:          log,

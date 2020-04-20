@@ -8,47 +8,53 @@ import (
 )
 
 type LogWriter struct {
-    writer      io.Writer
+    logFilePath string
     logFile     *os.File
     extraWriter io.Writer
     mutex       *sync.Mutex
+    stdEnabled  bool
 }
 
-func New(logFilePath string) (result *LogWriter, err error) {
-    var logFile *os.File
-    logFile, err = os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-    if err != nil {
-        err = errors.WithMessagev(err, "unable to open file", logFilePath)
-        return
+func New(logFilePath string) (result *LogWriter) {
+    return &LogWriter{
+        logFilePath: logFilePath,
+        mutex:       &sync.Mutex{},
+        stdEnabled:  true,
     }
-
-    result = &LogWriter{
-        logFile: logFile,
-        mutex:   &sync.Mutex{},
-    }
-
-    result.Reset()
-
-    return
 }
 
 func (l *LogWriter) Reset() {
-    l.mutex.Lock()
-    defer l.mutex.Unlock()
-
-    l.writer = io.MultiWriter(l.logFile, os.Stdout)
+    l.stdEnabled = true
 }
 
 func (l *LogWriter) DisableStdout() {
-    l.mutex.Lock()
-    defer l.mutex.Unlock()
-
-    l.writer = l.logFile
+    l.stdEnabled = false
 }
 
 func (l *LogWriter) Write(p []byte) (n int, err error) {
     l.mutex.Lock()
     defer l.mutex.Unlock()
 
-    return l.writer.Write(p)
+    file := l.file()
+
+    if l.stdEnabled {
+        return io.MultiWriter(file, os.Stdout).Write(p)
+    }
+    return file.Write(p)
+}
+
+func (l *LogWriter) file() (result *os.File) {
+    if l.logFile != nil {
+        return l.logFile
+    }
+
+    var err error
+    result, err = os.OpenFile(l.logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+    if err != nil {
+        panic(errors.WithMessagev(err, "unable to open file", l.logFilePath).Error())
+    }
+
+    l.logFile = result
+
+    return
 }

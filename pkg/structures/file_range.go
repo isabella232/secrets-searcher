@@ -1,19 +1,25 @@
 package structures
 
-type FileRange struct {
-    StartLineNum int
-    StartIndex   int
-    EndLineNum   int
-    EndIndex     int
+type (
+    FileRange struct {
+        StartLineNum int
+        StartIndex   int
+        EndLineNum   int
+        EndIndex     int
+    }
+)
+
+func NewFileRange(startLineNum int, startIndex int, endLineNum int, endIndex int) (result *FileRange) {
+    return &FileRange{
+        StartLineNum: startLineNum,
+        StartIndex:   startIndex,
+        EndLineNum:   endLineNum,
+        EndIndex:     endIndex,
+    }
 }
 
 func NewFileRangeFromLineRange(lineRange *LineRange, lineNum int) (result *FileRange) {
-    return &FileRange{
-        StartLineNum: lineNum,
-        StartIndex:   lineRange.StartIndex,
-        EndLineNum:   lineNum,
-        EndIndex:     lineRange.EndIndex,
-    }
+    return NewFileRange(lineNum, lineRange.StartIndex, lineNum, lineRange.EndIndex)
 }
 
 func (r FileRange) Overlaps(other *FileRange) bool {

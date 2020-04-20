@@ -5,12 +5,13 @@ import (
 )
 
 const (
-    CommitTable        = "commit"
-    FindingTable       = "finding"
-    FindingExtrasTable = "finding-extras"
-    RepoTable          = "repo"
-    SecretTable        = "secret"
-    SecretExtrasTable  = "secret-extras"
+    CommitTable           = "commit"
+    FindingTable          = "finding"
+    FindingExtrasTable    = "finding-extras"
+    RepoTable             = "repo"
+    SecretTable           = "secret"
+    SecretExtrasTable     = "secret-extras"
+    RepoCommitsCacheTable = "repo-commits-cahe"
 )
 
 type (
@@ -94,4 +95,12 @@ type (
     }
     Repos      []*Repo
     RepoGroups map[string]Repos
+
+    // Repo commit set (for caching)
+    RepoCommitsCache struct {
+        RepoName   string
+        OldestHash string
+        Hashes     []string
+    }
+    RepoCommitsCaches []*RepoCommitsCache
 )

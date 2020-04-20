@@ -4,6 +4,7 @@ import (
     "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/dbug"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
+    "github.com/sirupsen/logrus"
     "strings"
 )
 
@@ -19,6 +20,7 @@ type (
     Diff struct {
         Line                 *Line
         lineStrings          []string
+        lineStringsLen       int
         diffToFileLineNumMap map[int]int // FIXME This shouldn't need to be passed in
     }
     lineMatch  func(line *Line) bool
@@ -29,6 +31,7 @@ type (
 func New(lineStrings []string, lineMap map[int]int) (result *Diff, err error) {
     diff := &Diff{
         lineStrings:          lineStrings,
+        lineStringsLen:       len(lineStrings),
         diffToFileLineNumMap: lineMap,
     }
 
@@ -46,6 +49,7 @@ func (d *Diff) WhileTrueDo(lineMatch lineMatch, lineAction lineAction) (err erro
     for searching := lineMatch(d.Line); searching; searching = lineMatch(d.Line) {
         lineAction(d.Line)
         if err = d.Increment(); err != nil {
+            err = errors.WithMessage(err, "unable to incrememt once while searching line matches")
             return
         }
     }
@@ -53,35 +57,63 @@ func (d *Diff) WhileTrueDo(lineMatch lineMatch, lineAction lineAction) (err erro
 }
 
 func (d *Diff) WhileTrueCollectCode(lineMatch lineMatch, collected *[]string) (err error) {
-    return d.WhileTrueDo(lineMatch, func(line *Line) {
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {
         *collected = append(*collected, line.Code)
     })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect code while line matches")
+    }
+    return
 }
 
 func (d *Diff) WhileTrueCollectTrimmedCode(lineMatch lineMatch, collected *[]string, cutset string) (err error) {
-    return d.WhileTrueDo(lineMatch, func(line *Line) {
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {
         *collected = append(*collected, strings.Trim(line.Code, cutset))
     })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect trimmed code while line matches")
+    }
+    return
 }
 
 func (d *Diff) WhileTrueIncrement(lineMatch lineMatch) (err error) {
-    return d.WhileTrueDo(lineMatch, func(line *Line) {})
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {})
+    if err != nil {
+        err = errors.WithMessage(err, "unable to increment line while line matches")
+    }
+    return
 }
 
 func (d *Diff) UntilTrueCollectCode(lineMatch lineMatch, collected *[]string) (err error) {
-    return d.WhileTrueCollectCode(func(line *Line) bool { return !lineMatch(line) }, collected)
+    err = d.WhileTrueCollectCode(func(line *Line) bool { return !lineMatch(line) }, collected)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect code until line matches")
+    }
+    return
 }
 
 func (d *Diff) UntilTrueCollectTrimmedCode(lineMatch lineMatch, collected *[]string, cutset string) (err error) {
-    return d.WhileTrueCollectTrimmedCode(func(line *Line) bool { return !lineMatch(line) }, collected, cutset)
+    err = d.WhileTrueCollectTrimmedCode(func(line *Line) bool { return !lineMatch(line) }, collected, cutset)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect trimmed code until line matches")
+    }
+    return
 }
 
 func (d *Diff) UntilTrueIncrement(lineMatch lineMatch) (err error) {
-    return d.WhileTrueIncrement(func(line *Line) bool { return !lineMatch(line) })
+    err = d.WhileTrueIncrement(func(line *Line) bool { return !lineMatch(line) })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to increment line until line matches")
+    }
+    return
 }
 
 func (d *Diff) Increment() (err error) {
-    return d.SetLine(d.Line.LineNum + 1)
+    num := d.Line.LineNum + 1
+    if err = d.SetLine(num); err != nil {
+        err = errors.WithMessagef(err, "unable to increment line to %d", num)
+    }
+    return
 }
 
 func (d *Diff) SetLine(lineNum int) (err error) {
@@ -96,7 +128,7 @@ func (d *Diff) SetLine(lineNum int) (err error) {
 
     if dbug.Cnf.Enabled {
         lineNumFile, _ := d.fileLineNum(lineNum)
-        if dbug.Cnf.Filter.Line > -1 && lineNumFile == dbug.Cnf.Filter.Line {
+        if dbug.Cnf.FilterConfig.Line > -1 && lineNumFile == dbug.Cnf.FilterConfig.Line {
             fmt.Print("") // For breakpoint
         }
     }
@@ -105,7 +137,11 @@ func (d *Diff) SetLine(lineNum int) (err error) {
 }
 
 func (d *Diff) PeekNextLine() (result *Line, err error) {
-    return d.buildLine(d.Line.LineNum + 1)
+    result, err = d.buildLine(d.Line.LineNum + 1)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to peek at next line")
+    }
+    return
 }
 
 func (d *Diff) Lines() (result []string) {
@@ -152,4 +188,22 @@ func (d *Diff) buildLine(lineNumDiff int) (result *Line, err error) {
 func (d *Diff) fileLineNum(diffLineNum int) (result int, ok bool) {
     result, ok = d.diffToFileLineNumMap[diffLineNum]
     return
+}
+
+func (d *Diff) IsLastLine() bool {
+    return d.lineStringsLen == d.Line.LineNum
+}
+
+var eofWarning bool
+
+// Stupid, I know. But it helps clear up these types of errors
+func EOFErrFilter(err error, log logrus.FieldLogger) error {
+    if err == nil || !IsEOF(err) || eofWarning {
+        return err
+    }
+
+    errors.ErrLog(log, err).Warn("clean up your diff code, this is an uncaught EOF error!")
+    eofWarning = true
+
+    return nil
 }

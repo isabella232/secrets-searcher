@@ -1,54 +1,34 @@
 package finder
 
 import (
-    "fmt"
-    "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/interact"
-    "github.com/pantheon-systems/search-secrets/pkg/interact/progress"
     "github.com/pantheon-systems/search-secrets/pkg/stats"
-    "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
-    "runtime"
     "sync"
     "time"
 )
 
-type (
-    Finder struct {
-        chunkSize           int
-        workerCount         int
-        commitSearchTimeout time.Duration
-        processors          []Processor
-        fileChangeFilter    *gitpkg.FileChangeFilter
-        interact            interact.Interactish
-        writer              *Writer
-        payloadSet          *searchBuilder
-        db                  *database.Database
-        log               logrus.FieldLogger
-    }
-    job interface {
-        Perform()
-    }
-)
+type Finder struct {
+    *Writer
+    *SearchBuilder
+    workerCount int
+    interact    interact.Interactish
+    log         logrus.FieldLogger
+}
 
-func New(repoFilter *structures.Filter, commitFilter *gitpkg.CommitFilter, fileChangeFilter *gitpkg.FileChangeFilter, chunkSize, workerCount int, commitSearchTimeout time.Duration, processors []Processor, whitelistSecretIDSet structures.Set, interact interact.Interactish, db *database.Database, log logrus.FieldLogger) *Finder {
-    git := gitpkg.New(log)
-    payloadSet := newPayloadSet(git, repoFilter, commitFilter, workerCount, chunkSize, interact, db, log)
-    writer := newWriter(whitelistSecretIDSet, db, log)
-
+func New(writer *Writer,
+    searchBuilder *SearchBuilder,
+    workerCount int,
+    interact interact.Interactish,
+    log logrus.FieldLogger,
+) *Finder {
     return &Finder{
-        chunkSize:           chunkSize,
-        workerCount:         workerCount,
-        fileChangeFilter:    fileChangeFilter,
-        processors:          processors,
-        interact:            interact,
-        writer:              writer,
-        payloadSet:          payloadSet,
-        commitSearchTimeout: commitSearchTimeout,
-        db:                  db,
-        log:                 log,
+        Writer:        writer,
+        SearchBuilder: searchBuilder,
+        workerCount:   workerCount,
+        interact:      interact,
+        log:           log,
     }
 }
 
@@ -57,39 +37,37 @@ func (f *Finder) Search() (err error) {
 
     f.log.Info("finding secrets ... ")
 
-    for _, tableName := range []string{database.CommitTable, database.FindingTable, database.SecretTable} {
-        if f.db.TableExists(tableName) {
-            err = errors.Errorv("one or more finder-specific tables already exist, cannot prepare findings", tableName)
-            return
-        }
-    }
-
-    var payloads []*searchParameters
-    var repoCounts map[string]int
-    var commitCount int
-    payloads, repoCounts, commitCount, err = f.payloadSet.buildPayloads()
-    if err != nil {
-        err = errors.WithMessage(err, "unable to build search payloads")
+    if err = f.Writer.prepareFilesystem(); err != nil {
+        err = errors.WithMessage(err, "unable to prepare filesystem")
         return
     }
-    payloadsLen := len(payloads)
 
-    var prog = f.interact.NewProgress()
-    bars := f.progressBars(prog, repoCounts)
-
-    numCPU := runtime.NumCPU()
-    runtime.GOMAXPROCS(numCPU)
-
-    jobQueue := make(chan job, payloadsLen)
+    // Results queue
     out := make(chan *searchResult)
+
+    // Progress bar
+    prog := f.interact.NewProgress()
+
+    // Create job queue
+    var jobs []Search
+    var totalCommitCount int
+    jobs, totalCommitCount, err = f.SearchBuilder.getJobs(prog, out)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to build jobs")
+        return
+    }
+    jobLen := len(jobs)
 
     // Wait group ends when all jobs are done
     var jobsWG sync.WaitGroup
-    jobsWG.Add(payloadsLen)
+    jobsWG.Add(jobLen)
 
     // Wait group ends when all processing is done
     var processWG sync.WaitGroup
     processWG.Add(1)
+
+    // Job queue
+    jobQueue := make(chan Search, jobLen)
 
     // Set up workers
     for i := 0; i < f.workerCount; i++ {
@@ -103,27 +81,12 @@ func (f *Finder) Search() (err error) {
     }
 
     // Add jobs to queue
-    for i, payload := range payloads {
-        var bar *progress.Bar
-        if bars != nil {
-            bar = bars[payload.repo.Name]
-        }
-
-        workerName := fmt.Sprintf("%s-%d", payload.repo.Name, i)
-
-        workerLog := f.log.
-            WithField("worker", workerName).
-            WithField("commitsLen", payload.commitsLen)
-
-        workerLog.Debugf("adding finder worker for repo")
-
-        jobQueue <- NewSearch(out, workerName, payload, f.processors, f.fileChangeFilter, f.commitSearchTimeout, bar, f.db, workerLog)
+    for _, job := range jobs {
+        jobQueue <- job
     }
-
-    // Close job queue to further writes
     close(jobQueue)
 
-    // Process findings from channel
+    // Process findings from results channel
     go func() {
         defer processWG.Done()
 
@@ -131,8 +94,8 @@ func (f *Finder) Search() (err error) {
 
             //log := f.log.WithField("repo", result.RepoID)
 
-            if err = f.writer.persistResult(result); err != nil {
-                errors.ErrorLogger(f.log, errors.WithMessage(err, "error processing commit"))
+            if err = f.Writer.persistResult(result); err != nil {
+                errors.ErrLog(f.log, errors.WithMessage(err, "error processing commit"))
                 continue
             }
         }
@@ -150,25 +113,12 @@ func (f *Finder) Search() (err error) {
     processWG.Wait()
 
     // Stats
-    stats.CommitsSearchedCount += int64(commitCount)
-    stats.SecretsFoundCount = int64(f.writer.secretTracker.Len())
+    stats.CommitsSearchedCount += int64(totalCommitCount)
+    stats.SecretsFoundCount = int64(f.Writer.secretTracker.Len())
 
-    f.log.Infof("completed search")
+    f.log.Info("completed search")
 
     stats.SearchEndTime = time.Now()
 
-    return
-}
-
-func (f *Finder) progressBars(prog *progress.Progress, repoCounts map[string]int) (result map[string]*progress.Bar) {
-    if prog == nil {
-        return
-    }
-
-    result = make(map[string]*progress.Bar, len(repoCounts))
-    for repoName, commitCount := range repoCounts {
-        barName := fmt.Sprintf("%s", repoName)
-        result[repoName] = prog.AddBar(barName, commitCount, "searched %d of %d commits", "search of %s is complete")
-    }
     return
 }

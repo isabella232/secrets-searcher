@@ -1,6 +1,7 @@
 package finder
 
 import (
+    "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
@@ -10,47 +11,100 @@ import (
     "github.com/sirupsen/logrus"
     "math"
     "sort"
+    "time"
 )
 
-type (
-    searchBuilder struct {
-        git          *gitpkg.Git
-        repoFilter   *structures.Filter
-        commitFilter *gitpkg.CommitFilter
+type SearchBuilder struct {
+    git                 *gitpkg.Git
+    repoFilter          *structures.Filter
+    commitFilter        *gitpkg.CommitFilter
+    fileChangeFilter    *gitpkg.FileChangeFilter
+    commitSearchTimeout time.Duration
+    processors          []Processor
+    workerCount         int
+    chunkSize           int
+    showWorkersBars     bool
+    interact            interactpkg.Interactish
+    db                  *database.Database
+    log                 logrus.FieldLogger
+}
 
-        // How many commits for each payload
-        chunkSize int
-
-        // Queue the next payload from each of the first n repos, then repeat until there are no more payloads to queue
-        workerCount int
-
-        interact interactpkg.Interactish
-        db       *database.Database
-        log      logrus.FieldLogger
-    }
-    searchParameters struct {
-        repo         *database.Repo
-        repository   *gitpkg.Repository
-        commits      []*gitpkg.Commit
-        commitHashes []string
-        commitsLen   int
-    }
-)
-
-func newPayloadSet(git *gitpkg.Git, repoFilter *structures.Filter, commitFilter *gitpkg.CommitFilter, workerCount, chunkSize int, interact interactpkg.Interactish, db *database.Database, log logrus.FieldLogger) (result *searchBuilder) {
-    return &searchBuilder{
-        git:          git,
-        repoFilter:   repoFilter,
-        commitFilter: commitFilter,
-        chunkSize:    chunkSize,
-        workerCount:  workerCount,
-        interact: interact,
-        db:           db,
-        log:          log,
+func NewSearchBuilder(
+    git *gitpkg.Git,
+    repoFilter *structures.Filter,
+    commitFilter *gitpkg.CommitFilter,
+    fileChangeFilter *gitpkg.FileChangeFilter,
+    commitSearchTimeout time.Duration,
+    processors []Processor,
+    chunkSize int,
+    workerCount int,
+    showWorkersBars bool,
+    interact interactpkg.Interactish,
+    db *database.Database,
+    log logrus.FieldLogger,
+) (result *SearchBuilder) {
+    return &SearchBuilder{
+        git:                 git,
+        repoFilter:          repoFilter,
+        commitFilter:        commitFilter,
+        fileChangeFilter:    fileChangeFilter,
+        commitSearchTimeout: commitSearchTimeout,
+        processors:          processors,
+        workerCount:         workerCount,
+        chunkSize:           chunkSize,
+        showWorkersBars:     showWorkersBars,
+        interact:            interact,
+        db:                  db,
+        log:                 log,
     }
 }
 
-func (s *searchBuilder) buildPayloads() (result []*searchParameters, repoCounts map[string]int, commitCount int, err error) {
+func (s *SearchBuilder) getJobs(prog *progress.Progress, out chan *searchResult) (result []Search, totalCommitCount int, err error) {
+
+    // Build targets
+    var targets []*searchTarget
+    var repoCounts map[string]int
+    targets, repoCounts, totalCommitCount, err = s.buildJobParams()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to build search targets")
+        return
+    }
+    targetsLen := len(targets)
+
+    result = make([]Search, targetsLen)
+    for i, target := range targets {
+
+        // Name
+        workerName := fmt.Sprintf("%s-%d", target.repo.Name, i)
+
+        // Log
+        jobLog := s.log.
+            WithField("worker", workerName).
+            WithField("commitsLen", len(target.commitHashes))
+        jobLog.Debugf("adding finder worker for repo")
+
+        // Progress bar
+        bar := s.getBar(prog, target, workerName, repoCounts)
+
+        // Create job
+        job := newSearch(
+            out,
+            workerName,
+            target,
+            s.processors,
+            s.fileChangeFilter,
+            s.commitSearchTimeout,
+            bar,
+            jobLog,
+        )
+
+        result[i] = job
+    }
+
+    return
+}
+
+func (s *SearchBuilder) buildJobParams() (result []*searchTarget, repoCounts map[string]int, commitCount int, err error) {
     // Get repos from database
     var repos []*database.Repo
     if s.repoFilter != nil {
@@ -64,8 +118,8 @@ func (s *searchBuilder) buildPayloads() (result []*searchParameters, repoCounts 
     }
     reposLen := len(repos)
 
-    // Get payloads, grouped by repo name
-    var payloadsByRepo = make(map[string][]*searchParameters, reposLen)
+    // Get targets, grouped by repo name
+    var targetsByRepo = make(map[string][]*searchTarget, reposLen)
 
     // Also get a total count of commits for each repo
     repoCounts = make(map[string]int, reposLen)
@@ -74,7 +128,7 @@ func (s *searchBuilder) buildPayloads() (result []*searchParameters, repoCounts 
     prog = s.interact.NewProgress()
     var bar *progress.Bar
     if prog != nil {
-        bar = prog.AddBar("gathering commits", reposLen, "%d of %d repos", "search of %s completed")
+        bar = prog.AddBar("gathering commits", reposLen, "%d of %d repos", "commits gathered")
         bar.Start()
     }
 
@@ -86,34 +140,34 @@ func (s *searchBuilder) buildPayloads() (result []*searchParameters, repoCounts 
 
             // Get repository and commit objects
             var repository *gitpkg.Repository
-            var commits []*gitpkg.Commit
-            repository, commits, err = s.repositoryAndCommits(repo)
+            var commitHashes []string
+            var oldest string
+            repository, commitHashes, oldest, err = s.repositoryAndCommits(repo)
             if err != nil {
                 err = errors.WithMessagev(err, "unable to get repositories and commits for repo", repo.Name)
                 return
             }
 
-            // Add count
-            repoCounts[repo.Name] += len(commits)
+            // Add counts
+            repoCounts[repo.Name] += len(commitHashes)
+            commitCount += len(commitHashes)
 
-            commitCount += len(commits)
-
-            var repoPayloads []*searchParameters
-            repoPayloads, err = s.buildRepoPayloads(repo, repository, commits)
+            var repoTargets []*searchTarget
+            repoTargets, err = s.buildRepoTargets(repo, repository, commitHashes, oldest)
             if err != nil {
-                err = errors.WithMessagev(err, "unable to build repo payloads for repo", repo.Name)
+                err = errors.WithMessagev(err, "unable to build repo targets for repo", repo.Name)
                 return
             }
 
-            for _, repoPayload := range repoPayloads {
-                payloadsByRepo[repo.Name] = append(payloadsByRepo[repo.Name], repoPayload)
+            for _, repoTarget := range repoTargets {
+                targetsByRepo[repo.Name] = append(targetsByRepo[repo.Name], repoTarget)
             }
         }()
     }
 
     for {
-        var batch []*searchParameters
-        batch, payloadsByRepo, err = s.getBatch(payloadsByRepo)
+        var batch []*searchTarget
+        batch, targetsByRepo, err = s.getBatch(targetsByRepo)
         if err != nil {
             err = errors.WithMessage(err, "unable to get batch")
             return
@@ -127,26 +181,26 @@ func (s *searchBuilder) buildPayloads() (result []*searchParameters, repoCounts 
     return
 }
 
-func (s *searchBuilder) getBatch(payloadsByRepo map[string][]*searchParameters) (result []*searchParameters, rest map[string][]*searchParameters, err error) {
-    if len(payloadsByRepo) == 0 {
+func (s *SearchBuilder) getBatch(targetsByRepo map[string][]*searchTarget) (result []*searchTarget, rest map[string][]*searchTarget, err error) {
+    if len(targetsByRepo) == 0 {
         return
     }
 
     max := s.workerCount
 
-    // Get next payload for each repo
+    // Get next target for each repo
     for {
-        var firstPayloads []*searchParameters
-        firstPayloads, payloadsByRepo, err = s.getFirstPayloads(payloadsByRepo, max)
+        var firstTargets []*searchTarget
+        firstTargets, targetsByRepo, err = s.getFirstTargets(targetsByRepo, max)
         if err != nil {
-            err = errors.WithMessage(err, "unable to get first payloads")
+            err = errors.WithMessage(err, "unable to get first target")
             return
         }
-        if firstPayloads == nil {
+        if firstTargets == nil {
             break
         }
 
-        result = append(result, firstPayloads...)
+        result = append(result, firstTargets...)
 
         max = s.workerCount - len(result)
 
@@ -155,35 +209,35 @@ func (s *searchBuilder) getBatch(payloadsByRepo map[string][]*searchParameters) 
         }
     }
 
-    rest = payloadsByRepo
+    rest = targetsByRepo
 
     return
 }
 
-func (s *searchBuilder) getFirstPayloads(payloadsByRepo map[string][]*searchParameters, max int) (result []*searchParameters, rest map[string][]*searchParameters, err error) {
-    if len(payloadsByRepo) == 0 {
+func (s *SearchBuilder) getFirstTargets(targetsByRepo map[string][]*searchTarget, max int) (result []*searchTarget, rest map[string][]*searchTarget, err error) {
+    if len(targetsByRepo) == 0 {
         return
     }
 
     // Get first n repo names
-    repoNames := make([]string, len(payloadsByRepo))
+    repoNames := make([]string, len(targetsByRepo))
     i := 0
-    for k := range payloadsByRepo {
+    for k := range targetsByRepo {
         repoNames[i] = k
         i++
     }
     sort.Strings(repoNames)
 
-    // Get next payload for each repo
+    // Get next target for each repo
     collected := 0
     for _, repoName := range repoNames {
-        // Get next payload from repo payloads and delete it from the source
-        result = append(result, payloadsByRepo[repoName][0])
-        payloadsByRepo[repoName] = payloadsByRepo[repoName][1:]
+        // Get next target from repo targets and delete it from the source
+        result = append(result, targetsByRepo[repoName][0])
+        targetsByRepo[repoName] = targetsByRepo[repoName][1:]
 
         // Delete repo from map if its slice is empty now
-        if len(payloadsByRepo[repoName]) == 0 {
-            delete(payloadsByRepo, repoName)
+        if len(targetsByRepo[repoName]) == 0 {
+            delete(targetsByRepo, repoName)
         }
 
         collected += 1
@@ -193,31 +247,21 @@ func (s *searchBuilder) getFirstPayloads(payloadsByRepo map[string][]*searchPara
         }
     }
 
-    rest = payloadsByRepo
+    rest = targetsByRepo
 
     return
 }
 
-func (s *searchBuilder) buildRepoPayloads(repo *database.Repo, repository *gitpkg.Repository, commits []*gitpkg.Commit) (result []*searchParameters, err error) {
+func (s *SearchBuilder) buildRepoTargets(repo *database.Repo, repository *gitpkg.Repository, commitHashes []string, oldest string) (result []*searchTarget, err error) {
     // Get chunks of commits
-    commitChunks := s.chunkCommits(commits)
-    commitChunksLen := len(commitChunks)
+    commitHashChunks := s.chunkCommits(commitHashes)
+    commitHashChunksLen := len(commitHashChunks)
 
-    result = make([]*searchParameters, commitChunksLen)
+    result = make([]*searchTarget, commitHashChunksLen)
 
-    for i := 0; i < commitChunksLen; i++ {
-        chunkCommits := commitChunks[i]
-        chunkCommitsLen := len(chunkCommits)
+    for i := 0; i < commitHashChunksLen; i++ {
+        chunkCommitHashes := commitHashChunks[i]
 
-        // Set first payload using the original repository and commits
-        if i == 0 {
-            result[i] = newPayload(repo, repository, chunkCommits, nil)
-            continue
-        }
-
-        // Set subsequent payloads, each with a fresh repository object,
-        // to avoid race conditions (https://github.com/src-d/go-git/issues/702).
-        // To save memory, the payloads will have commit hashes only.
         var spawnedRepository *gitpkg.Repository
         spawnedRepository, err = repository.Spawn()
         if err != nil {
@@ -225,35 +269,35 @@ func (s *searchBuilder) buildRepoPayloads(repo *database.Repo, repository *gitpk
             return
         }
 
-        // Get hashes of commits
-        chunkCommitHashes := make([]string, chunkCommitsLen)
-        for i, chunkCommit := range chunkCommits {
-            chunkCommitHashes[i] = chunkCommit.Hash
+        result[i] = &searchTarget{
+            repo:         repo,
+            repository:   spawnedRepository,
+            commitHashes: chunkCommitHashes,
+            oldest:       oldest,
         }
-
-        result[i] = newPayload(repo, spawnedRepository, nil, chunkCommitHashes)
     }
 
     return
 }
 
-func (s *searchBuilder) repositoryAndCommits(repo *database.Repo) (repository *gitpkg.Repository, commits []*gitpkg.Commit, err error) {
+func (s *SearchBuilder) repositoryAndCommits(repo *database.Repo) (repository *gitpkg.Repository, commitHashes []string, oldest string, err error) {
     repository, err = s.git.NewRepository(repo.CloneDir)
     if err != nil {
         err = errors.Wrapv(err, "unable to open git repository", repo.CloneDir)
         return
     }
 
-    commits, err = repository.Log(s.commitFilter)
+    commitHashes, oldest, err = s.commitHashes(repo, repository)
     if err != nil {
-        err = errors.Wrap(err, "unable to run git log")
+        err = errors.WithMessage(err, "unable to get commit hashes")
         return
     }
-    commitsLen := len(commits)
+
+    commitsLen := len(commitHashes)
 
     s.log.WithField("repo", repo.Name).Debugf("%d commits found for repo", commitsLen)
 
-    if len(commits) == 0 {
+    if len(commitHashes) == 0 {
         err = errors.New("no commits found in repo")
         return
     }
@@ -261,10 +305,84 @@ func (s *searchBuilder) repositoryAndCommits(repo *database.Repo) (repository *g
     return
 }
 
-func (s *searchBuilder) chunkCommits(items []*gitpkg.Commit) (result [][]*gitpkg.Commit) {
+func (s *SearchBuilder) commitHashes(repo *database.Repo, repository *gitpkg.Repository) (result []string, oldest string, err error) {
+    // From cache
+    if result, oldest = s.commitHashesFromCache(repo); result != nil {
+        s.log.WithField("repo", repo.Name).Debugf("commits cache found for repo")
+        return
+    }
+
+    // From git log
+    result, oldest, err = s.commitHashesFromLog(repository)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get commit hashes from git log")
+        return
+    }
+    commitsLen := len(result)
+
+    if commitsLen == 0 {
+        err = errors.Errorv("no commits found in repo", repo.Name)
+        return
+    }
+
+    s.log.WithField("repo", repo.Name).Debugf("%d commits found for repo", commitsLen)
+
+    // Write cache
+    cacheErr := s.db.WriteRepoCommitsCache(&database.RepoCommitsCache{
+        RepoName:   repo.Name,
+        Hashes:     result,
+        OldestHash: result[len(result)-1],
+    })
+    if cacheErr != nil {
+        errors.ErrLog(s.log, cacheErr).Error("unable to cache get repo commits")
+    }
+
+    return
+}
+
+func (s *SearchBuilder) commitHashesFromLog(repository *gitpkg.Repository) (result []string, oldest string, err error) {
+    var commits []*gitpkg.Commit
+    commits, err = repository.Log(s.commitFilter)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to run git log")
+        return
+    }
+    for _, commit := range commits {
+        result = append(result, commit.Hash)
+        if commit.Oldest {
+            oldest = commit.Hash
+        }
+    }
+
+    return
+}
+
+func (s *SearchBuilder) commitHashesFromCache(repo *database.Repo) (result []string, oldest string) {
+    if !s.commitFilter.IncludesAll() {
+        return
+    }
+
+    repoCommitsCache, cacheErr := s.db.GetRepoCommitsCache(repo.Name)
+    if cacheErr != nil {
+        errors.ErrLog(s.log, cacheErr).Error("unable to get repo commits cache")
+        return
+    }
+
+    if repoCommitsCache == nil {
+        return
+    }
+
+    s.log.WithField("repo", repo.Name).Debugf("commits cache found for repo")
+    result = repoCommitsCache.Hashes
+    oldest = repoCommitsCache.OldestHash
+
+    return
+}
+
+func (s *SearchBuilder) chunkCommits(items []string) (result [][]string) {
     itemsLen := len(items)
     chunksLen := int(math.Ceil(float64(itemsLen) / float64(s.chunkSize)))
-    result = make([][]*gitpkg.Commit, chunksLen)
+    result = make([][]string, chunksLen)
 
     for i, _ := range result {
         start := i * s.chunkSize
@@ -278,42 +396,20 @@ func (s *searchBuilder) chunkCommits(items []*gitpkg.Commit) (result [][]*gitpkg
     return
 }
 
-func newPayload(repo *database.Repo, repository *gitpkg.Repository, commits []*gitpkg.Commit, commitHashes []string) *searchParameters {
-    var commitsLen int
-    if commits != nil {
-        commitsLen = len(commits)
-    }
-    if commitHashes != nil {
-        commitsLen = len(commitHashes)
-    }
-
-    return &searchParameters{
-        repo:         repo,
-        repository:   repository,
-        commits:      commits,
-        commitHashes: commitHashes,
-        commitsLen:   commitsLen,
-    }
-}
-
-func (p *searchParameters) getCommits() (result []*gitpkg.Commit, err error) {
-    if p.commits != nil {
-        result = p.commits
+func (s *SearchBuilder) getBar(prog *progress.Progress, target *searchTarget, workerName string, repoCounts map[string]int) (result *progress.Bar) {
+    if prog == nil {
         return
     }
 
-    result = make([]*gitpkg.Commit, len(p.commitHashes))
-    for i, commitHash := range p.commitHashes {
-        var commit *gitpkg.Commit
-        commit, err = p.repository.Commit(commitHash)
-        if err != nil {
-            err = errors.WithMessagev(err, "unable to get commit", commitHash)
-            return
-        }
-        result[i] = commit
+    var barName string
+    var totalCommitCount int
+    if s.showWorkersBars {
+        barName = workerName
+        totalCommitCount = len(target.commitHashes)
+    } else {
+        barName = target.repo.Name
+        totalCommitCount = repoCounts[target.repo.Name]
     }
 
-    p.commits = result
-
-    return
+    return prog.AddBar(barName, totalCommitCount, "searched %d of %d commits", "search of %s is complete")
 }

@@ -79,14 +79,14 @@ func Cause(err error) error {
 }
 
 // Log error and return Logger object
-func ErrorLogger(log logrus.FieldLogger, err error) logrus.FieldLogger {
+func ErrLog(log logrus.FieldLogger, err error) logrus.FieldLogger {
     log = WithStacktrace(log, err)
     return log.WithError(err)
 }
 
 // Log error and return logger object
 func LogErrorThenDie(log logrus.FieldLogger, err error) {
-    ErrorLogger(log, err).Fatal("fatal error")
+    ErrLog(log, err).Fatal("fatal error")
 }
 
 // Panic handling
@@ -132,7 +132,7 @@ func main() {
 func CatchPanicAndLogIt(log logrus.FieldLogger) {
     if recovered := recover(); recovered != nil {
         err := panicValueToErr(recovered)
-        log = ErrorLogger(log, err)
+        log = ErrLog(log, err)
         log.Error(err.Error())
     }
 }
@@ -193,7 +193,11 @@ func WithStacktrace(log logrus.FieldLogger, err error) logrus.FieldLogger {
 }
 
 func messageWithValue(message string, arg0 interface{}, args ...interface{}) string {
-    return fmt.Sprintf("%s (%v)", message, value(arg0, args...))
+    v := value(arg0, args...)
+    if v == "" {
+        return message
+    }
+    return fmt.Sprintf("%s (%v)", message, v)
 }
 
 func value(arg0 interface{}, args ...interface{}) string {
@@ -206,10 +210,16 @@ func value(arg0 interface{}, args ...interface{}) string {
         }
 
         switch v := arg0.(type) {
-        case logrus.Fields:
-            return fieldsString(v)
         case map[string]interface{}:
             return fieldsString(v)
+        case logrus.Fields:
+            return fieldsString(v)
+        case logrus.Entry:
+            return fieldsString(v.Data)
+        case *logrus.Entry:
+            return fieldsString(v.Data)
+        case logrus.Logger, *logrus.Logger:
+            return ""
         }
 
         return fmt.Sprintf("%+v", arg0)

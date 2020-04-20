@@ -7,6 +7,7 @@ import (
     "github.com/vbauerster/mpb/v5"
     "github.com/vbauerster/mpb/v5/decor"
     "io"
+    "strings"
     "sync"
 )
 
@@ -17,13 +18,13 @@ type Bar struct {
     unitPlural       string
     total            int
     runningTotal     int
-    appendMsgFormat string
+    appendMsgFormat  string
     completedMessage string
     mutex            *sync.Mutex
     log              logrus.FieldLogger
 
     // FIXME Not the place for this
-    SecretTracker   structures.Set
+    SecretTracker structures.Set
 }
 
 func newBar(progress *Progress, barName string, total int, appendMsgFormat, completedMessage string, log logrus.FieldLogger) (result *Bar) {
@@ -32,7 +33,7 @@ func newBar(progress *Progress, barName string, total int, appendMsgFormat, comp
         progress:         progress,
         total:            total,
         runningTotal:     total,
-        appendMsgFormat: appendMsgFormat,
+        appendMsgFormat:  appendMsgFormat,
         completedMessage: completedMessage,
         mutex:            &sync.Mutex{},
         log:              log,
@@ -49,6 +50,8 @@ func (b *Bar) Start() {
         return
     }
 
+    b.SecretTracker = structures.NewSet(nil)
+
     b.uiBar = b.progress.uiProgress.AddBar(int64(b.total),
         mpb.BarNoPop(),
         mpb.BarRemoveOnComplete(),
@@ -61,13 +64,6 @@ func (b *Bar) Start() {
     )
 }
 
-func (b *Bar) RunningTotal() int {
-    b.mutex.Lock()
-    defer b.mutex.Unlock()
-
-    return b.runningTotal
-}
-
 func (b *Bar) Incr() {
     b.mutex.Lock()
     defer b.mutex.Unlock()
@@ -77,12 +73,12 @@ func (b *Bar) Incr() {
     b.runningTotal -= 1
 
     if b.runningTotal == 0 {
-        var message string
 
         // FIXME Not the place for this
         secretsFound := b.SecretTracker.Len()
+        message := fmt.Sprintf("%d commits searched", b.total)
         if secretsFound > 0 {
-            message = fmt.Sprintf("%d unique secrets found", secretsFound)
+            message += fmt.Sprintf(", %d SECRETS FOUND", secretsFound)
         }
 
         b.Finished(message)
@@ -90,13 +86,18 @@ func (b *Bar) Incr() {
 }
 
 func (b *Bar) Finished(perensMessage string) {
-    b.progress.Add(0, mpb.BarFillerFunc(func(writer io.Writer, width int, st *decor.Statistics) {
-        message := fmt.Sprintf(b.completedMessage, b.barName)
-        fmt.Fprintf(writer, "- %s", message)
-        if perensMessage != "" {
-            fmt.Fprintf(writer, " (%s)", perensMessage)
-        }
-    })).SetTotal(0, true)
+    if b.completedMessage != "" {
+        b.progress.Add(0, mpb.BarFillerFunc(func(writer io.Writer, width int, st *decor.Statistics) {
+            message := fmt.Sprintf(b.completedMessage, b.barName)
+            if strings.Contains(message, "%!(EXTRA") {
+                message = b.completedMessage
+            }
+            fmt.Fprintf(writer, "- %s", message)
+            if perensMessage != "" {
+                fmt.Fprintf(writer, " (%s)", perensMessage)
+            }
+        })).SetTotal(0, true)
+    }
 }
 
 func (b *Bar) BustThrough(fnc func()) {

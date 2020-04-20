@@ -4,9 +4,9 @@ package processor_type
 
 // ProcessorTypeEnum is the the enum interface that can be used
 type ProcessorTypeEnum interface {
-	String() string
-	Value() string
-	uniqueProcessorTypeMethod()
+    String() string
+    Value() string
+    uniqueProcessorTypeMethod()
 }
 
 // processorTypeEnumBase is the internal, non-exported type
@@ -68,10 +68,10 @@ func (Entropy) String() string { return "Entropy" }
 func (Entropy) uniqueProcessorTypeMethod() {}
 
 var internalProcessorTypeEnumValues = []ProcessorTypeEnum{
-	URL{}.New(),
-	Regex{}.New(),
-	PEM{}.New(),
-	Entropy{}.New(),
+    URL{}.New(),
+    Regex{}.New(),
+    PEM{}.New(),
+    Entropy{}.New(),
 }
 
 // ProcessorTypeEnumValues will return a slice of all allowed enum value types
@@ -79,24 +79,24 @@ func ProcessorTypeEnumValues() []ProcessorTypeEnum { return internalProcessorTyp
 
 // NewProcessorTypeFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewProcessorTypeFromValue(v string) (result ProcessorTypeEnum) {
-	switch v {
-	case valueURL:
-		result = URL{}.New()
-	case valueRegex:
-		result = Regex{}.New()
-	case valuePEM:
-		result = PEM{}.New()
-	case valueEntropy:
-		result = Entropy{}.New()
-	}
-	return
+    switch v {
+    case valueURL:
+        result = URL{}.New()
+    case valueRegex:
+        result = Regex{}.New()
+    case valuePEM:
+        result = PEM{}.New()
+    case valueEntropy:
+        result = Entropy{}.New()
+    }
+    return
 }
 
 // MustGetProcessorTypeFromValue is the same as NewProcessorTypeFromValue, but will panic in case of conversion failure
 func MustGetProcessorTypeFromValue(v string) ProcessorTypeEnum {
-	result := NewProcessorTypeFromValue(v)
-	if result == nil {
-		panic("invalid ProcessorTypeEnum value cast")
-	}
-	return result
+    result := NewProcessorTypeFromValue(v)
+    if result == nil {
+        panic("invalid ProcessorTypeEnum value cast")
+    }
+    return result
 }

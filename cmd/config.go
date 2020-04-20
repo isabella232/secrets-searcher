@@ -2,6 +2,7 @@ package cmd
 
 import (
     "fmt"
+    apppkg "github.com/pantheon-systems/search-secrets/pkg/app"
     "github.com/pantheon-systems/search-secrets/pkg/app/source_provider"
     "github.com/pantheon-systems/search-secrets/pkg/dbug"
     "github.com/pantheon-systems/search-secrets/pkg/finder"
@@ -9,7 +10,6 @@ import (
     "github.com/pantheon-systems/search-secrets/pkg/finder/processor/pem"
     "github.com/pantheon-systems/search-secrets/pkg/finder/processor/regex"
     "github.com/pantheon-systems/search-secrets/pkg/finder/processor/url"
-    "github.com/spf13/cobra"
     "os"
     "path/filepath"
     "regexp"
@@ -17,7 +17,6 @@ import (
     "time"
 
     "github.com/mitchellh/mapstructure"
-    apppkg "github.com/pantheon-systems/search-secrets/pkg/app"
     "github.com/pantheon-systems/search-secrets/pkg/app/processor_type"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
@@ -26,10 +25,17 @@ import (
     "github.com/spf13/viper"
 )
 
-var cfg config
+const dateFormat = "2006-01-02"
+
+var cfgUnmarshalOpt = viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+    mapstructure.StringToTimeHookFunc(dateFormat),
+    mapstructure.StringToSliceHookFunc(","),
+    mapstructure.StringToTimeDurationHookFunc(),
+))
 
 type (
-    // Root config
+
+    // Stores all config information from config file and command line flags
     config struct {
 
         // Output and workflow
@@ -44,7 +50,6 @@ type (
 
         // Finder config
         ProcessorConfig    []processorConfig `mapstructure:"processors"`
-        Refs               []string          `mapstructure:"refs"`
         EarliestDate       time.Time         `mapstructure:"earliest-date"`
         LatestDate         time.Time         `mapstructure:"latest-date"`
         WhitelistPathMatch []string          `mapstructure:"whitelist-path-match"`
@@ -59,6 +64,7 @@ type (
         ChunkSize           int           `mapstructure:"chunk-size"`
         WorkerCount         int           `mapstructure:"worker-count"`
         CommitSearchTimeout time.Duration `mapstructure:"commit-search-timeout"`
+        ShowWorkersBars     bool          `mapstructure:"show-worker-bars"`
 
         // Dev config
         Dbug dbug.Config `mapstructure:"dbug"`
@@ -110,73 +116,10 @@ type (
     }
 )
 
-func buildAppConfig() (result *apppkg.Config, err error) {
-    // Processor
-    var processors []finder.Processor
-    for _, conf := range cfg.ProcessorConfig {
-        var proc finder.Processor
-        proc, err = buildProcessor(conf)
-        if err != nil {
-            err = errors.WithMessagev(err, "unable to build processor", proc.Name())
-            return
-        }
-
-        processors = append(processors, proc)
-    }
-
-    // Latest time - convert date to datetime
-    var latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
-
-    // Whitelist paths
-    var whitelistPath structures.RegexpSet
-    whitelistPath, err = structures.NewRegexpSetFromStrings(cfg.WhitelistPathMatch)
-    if err != nil {
-        log.Fatal(errors.WithMessagev(err, "unable to create regexp set from `whitelist-path-match` parameter", cfg.WhitelistPathMatch))
-    }
-
-    // Build set of secrets to whitelist
-    whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
-    if cfg.WhitelistSecretDir != "" {
-        if err = appendSecretsFromWhitelistDir(&whitelistSecretIDSet); err != nil {
-            log.Fatal(errors.WithMessage(err, "unable to create app"))
-        }
-    }
-
-    sourceConfig := &apppkg.SourceConfig{
-        SourceProvider: cfg.Source.Provider,
-        GithubToken:    cfg.Source.APIToken,
-        Organization:   cfg.Source.Organization,
-        Repos:          cfg.Source.Repos,
-        ExcludeRepos:   cfg.Source.ExcludeRepos,
-        ExcludeForks:   cfg.Source.SkipForks,
-        LocalDir:       cfg.Source.LocalDir,
-    }
-    result = &apppkg.Config{
-        SkipSourcePrep:          cfg.SkipSourcePrep,
-        Interactive:             cfg.Interactive,
-        OutputDir:               cfg.OutputDir,
-        Refs:                    cfg.Refs,
-        Processors:              processors,
-        EarliestTime:            cfg.EarliestDate,
-        LatestTime:              latestTime,
-        WhitelistPath:           whitelistPath,
-        WhitelistSecretIDSet:    whitelistSecretIDSet,
-        AppURL:                  appURL,
-        EnableReportDebugOutput: cfg.EnableReportDebugOutput,
-        ChunkSize:               cfg.ChunkSize,
-        WorkerCount:             cfg.WorkerCount,
-        CommitSearchTimeout:     cfg.CommitSearchTimeout,
-        SourceConfig:            sourceConfig,
-        LogWriter:               logWriter,
-        Log:                     log,
-    }
-
-    return
-}
-
-// A subset of command parameters that can overwrite configuration values
-func initArgs() {
-    flags := rootCmd.PersistentFlags()
+// Define command line flags
+// Only a subset of config values can be overwritten with command line flags
+func defineFlags() *pflag.FlagSet {
+    flags := pflag.CommandLine
 
     // Config file
     flags.String(
@@ -224,6 +167,10 @@ func initArgs() {
         "commit-search-timeout",
         5*time.Second,
         "How long to wait for a single commit to be searched.")
+    flags.Bool(
+        "show-worker-bars",
+        false,
+        "Show one progress bar per worker instead of one per repo.")
 
     // Finder config
     flags.StringSlice(
@@ -236,7 +183,7 @@ func initArgs() {
         "Only search commits on or after this date.")
     flags.String(
         "latest-date",
-        time.Now().Format(dateFormat),
+        time.Time{}.Format(dateFormat),
         "Only search commits on or before this date.")
     flags.String(
         "earliest-commit",
@@ -263,7 +210,7 @@ func initArgs() {
     flags.Bool(
         "skip-report-secrets",
         false,
-        "If true, the `./output/report/secret-[SECRETID].yaml` files will not be generated.")
+        "If true, the `./output/report/secrets/*/secret-*.yaml` files will not be generated.")
     flags.Bool(
         "enable-report-debug-output",
         false,
@@ -274,69 +221,66 @@ func initArgs() {
         "dbug.enabled",
         false,
         "If true, certain development features are enabled.")
+
+    // Show usage
+    flags.Bool(
+        "help",
+        false,
+        "Show command usage.")
+
+    return flags
 }
 
-// Build the cfg variable
-func initConfig() (err error) {
+// Pull config information from config file and command line flags and save to `cfg`
+func initConfig(args []string) (result config, err error) {
     vpr := viper.New()
 
-    // Config file
-    var cfgFile string
-    cfgFile, err = rootCmd.PersistentFlags().GetString("config")
-    if err != nil {
-        err = errors.Wrap(err, "unable to get \"config\" command parameter value")
-        return
+    // Parse flags
+    flags := defineFlags()
+    _ = flags.Parse(args[1:]) // Will exit on error
+
+    // Show help message
+    if help, _ := flags.GetBool("help"); help {
+        printHelp(flags)
+        os.Exit(0)
     }
-    if cfgFile == "" {
+
+    // Bind CLI flags to viper
+    if err = vpr.BindPFlags(flags); err != nil {
+        err = errors.Wrap(err, "unable to bind flags")
+    }
+
+    // Bind config file to viper
+    var cfgFile string
+    if cfgFile = vpr.GetString("config"); cfgFile == "" {
         err = errors.Wrap(err, "\"config\" parameter required")
         return
     }
     vpr.SetConfigFile(cfgFile)
 
-    // Bind cobra and viper together
-    var flags []*pflag.Flag
-    for _, cmd := range append([]*cobra.Command{rootCmd}, rootCmd.Commands()...) {
-        cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
-            if f.Name != "config" {
-                flags = append(flags, f)
-            }
-        })
-    }
-    for _, f := range flags {
-        if err = vpr.BindPFlag(f.Name, f); err != nil {
-            err = errors.Wrapv(err, "unable to bind flag", f.Name)
-            return
-        }
-    }
-
-    // Read config file
+    // Parse all config
     if err = vpr.ReadInConfig(); err != nil {
         err = errors.Wrap(err, "unable to read config file")
         return
     }
 
-    // Unmarshal config into object
-    opts := viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-        mapstructure.StringToTimeHookFunc(dateFormat),
-        mapstructure.StringToSliceHookFunc(","),
-        mapstructure.StringToTimeDurationHookFunc(),
-    ))
-    if err = vpr.Unmarshal(&cfg, opts); err != nil {
+    // Build config object
+    if err = vpr.Unmarshal(&result, cfgUnmarshalOpt); err != nil {
         err = errors.Wrap(err, "unable to unmarshal config")
         return
     }
 
-    // debug config
-    dbug.Cnf = cfg.Dbug
-
     // Validate parameters
-    validateParameters()
+    validateConfig(result)
+
+    // Set dbug config into a singleton for easy access
+    dbug.Cnf = result.Dbug
 
     return
 }
 
 // Validate config
-func validateParameters() {
+func validateConfig(cfg config) {
 
     // Output and workflow
     validationAssertTrue(cfg.LogLevel != "", "log-level", "")
@@ -346,7 +290,7 @@ func validateParameters() {
     validationAssertTrue(cfg.WorkerCount > 0, "worker-count", "")
 
     // `source` config
-    validateSourceParameter()
+    validateSourceParameter(cfg)
 
     // `processors` config
     validationAssertTrue(len(cfg.ProcessorConfig) > 0, "processors", "")
@@ -369,7 +313,77 @@ func validateParameters() {
     }
 }
 
-func validateSourceParameter() {
+// Translate viper config into application config
+func buildAppConfig(cfg config, log *logrus.Entry) (result *apppkg.Config, err error) {
+    // Processor
+    var processors []finder.Processor
+    for _, conf := range cfg.ProcessorConfig {
+        var proc finder.Processor
+        proc, err = buildProcessor(conf)
+        if err != nil {
+            err = errors.WithMessagev(err, "unable to build processor", proc.Name())
+            return
+        }
+
+        processors = append(processors, proc)
+    }
+
+    // Latest time - convert date to datetime
+    var latestTime time.Time
+    if !cfg.LatestDate.IsZero() {
+        latestTime = cfg.LatestDate.Add(24 * time.Hour).Add(-1 * time.Second)
+    }
+
+    // Whitelist paths
+    var whitelistPath structures.RegexpSet
+    whitelistPath, err = structures.NewRegexpSetFromStrings(cfg.WhitelistPathMatch)
+    if err != nil {
+        err = errors.WithMessagev(err, "unable to create regexp set from `whitelist-path-match` parameter", cfg.WhitelistPathMatch)
+        return
+    }
+
+    // Build set of secrets to whitelist
+    whitelistSecretIDSet := structures.NewSet(cfg.WhitelistSecretIDs)
+    if cfg.WhitelistSecretDir != "" {
+        if err = appendSecretsFromWhitelistDir(cfg, &whitelistSecretIDSet); err != nil {
+            err = errors.WithMessage(err, "unable to appent whitelist secret IDs")
+            return
+        }
+    }
+
+    sourceConfig := &apppkg.SourceConfig{
+        SourceProvider: cfg.Source.Provider,
+        GithubToken:    cfg.Source.APIToken,
+        Organization:   cfg.Source.Organization,
+        Repos:          cfg.Source.Repos,
+        ExcludeRepos:   cfg.Source.ExcludeRepos,
+        ExcludeForks:   cfg.Source.SkipForks,
+        LocalDir:       cfg.Source.LocalDir,
+    }
+    result = &apppkg.Config{
+        SkipSourcePrep:          cfg.SkipSourcePrep,
+        Interactive:             cfg.Interactive,
+        OutputDir:               cfg.OutputDir,
+        Processors:              processors,
+        EarliestTime:            cfg.EarliestDate,
+        LatestTime:              latestTime,
+        WhitelistPath:           whitelistPath,
+        WhitelistSecretIDSet:    whitelistSecretIDSet,
+        AppURL:                  appURL,
+        EnableReportDebugOutput: cfg.EnableReportDebugOutput,
+        ChunkSize:               cfg.ChunkSize,
+        WorkerCount:             cfg.WorkerCount,
+        ShowWorkersBars:         cfg.ShowWorkersBars,
+        CommitSearchTimeout:     cfg.CommitSearchTimeout,
+        SourceConfig:            sourceConfig,
+        NonZero:                 cfg.NonZero,
+        Log:                     log,
+    }
+
+    return
+}
+
+func validateSourceParameter(cfg config) {
     switch cfg.Source.Provider {
     case source_provider.GitHub{}.New().Value():
         // TODO Implement user for GitHub provider, not just organization
@@ -378,23 +392,26 @@ func validateSourceParameter() {
         validationAssertTrue(cfg.Source.APIToken != "", "source.api-token", "")
         validationAssertTrue(cfg.Source.Organization != "", "source.organization", "")
     case source_provider.Local{}.New().Value():
-        errors.LogErrorThenDie(log, errors.New("currently only \"github\" is supported as `source.provider`"))
-        validateSourceLocalDirParameter()
+        fatal("currently only \"github\" is supported as `source.provider`")
+        validateSourceLocalDirParameter(cfg)
     default:
-        errors.LogErrorThenDie(log, errors.New("currently only \"github\" is supported as `source.provider`"))
+        fatal("currently only \"github\" is supported as `source.provider`")
     }
 }
 
-func validateSourceLocalDirParameter() {
+func validateSourceLocalDirParameter(cfg config) {
     validationAssertTrue(cfg.Source.LocalDir != "", "source.dir", "")
+
     localAbs, err := filepath.Abs(cfg.Source.LocalDir)
     if err != nil {
-        errors.LogErrorThenDie(log, errors.Errorv("unable to get abs path", cfg.Source.LocalDir))
+        fatal(fmt.Sprintf("unable to get abs path of %s", cfg.Source.LocalDir))
     }
+
     outputDirAbs, err := filepath.Abs(cfg.OutputDir)
     if err != nil {
-        errors.LogErrorThenDie(log, errors.Errorv("unable to get abs path", cfg.OutputDir))
+        fatal(fmt.Sprintf("unable to get abs path of %s", cfg.OutputDir))
     }
+
     validationAssertTrue(!strings.HasPrefix(localAbs, outputDirAbs), "source.dir",
         "your `%s` dir cannot be within your output dir")
 }
@@ -406,7 +423,7 @@ func validateProcessorParameter(conf processorConfig, configNameBase string) {
         validationAssertTrue(noExtraValues, configNameBase+"regex", "invalid config on processor")
         validationAssertTrue(conf.RegexString != "", configNameBase+"regex", "")
     case processor_type.PEM{}.New().Value():
-        noExtraValues := conf.EntropyConfig == entropyConfig{} && len(conf.WhitelistCodeMatch) == 0
+        noExtraValues := conf.EntropyConfig == entropyConfig{}
         validationAssertTrue(noExtraValues, configNameBase+"pem", "invalid config on processor")
         validationAssertTrue(conf.PEMType != "", configNameBase+"pem-type", "")
         validationAssertTrue(pem.NewPEMTypeFromValue(conf.PEMType) != nil, configNameBase+"pem-type",
@@ -437,7 +454,7 @@ func buildProcessor(procConf processorConfig) (result finder.Processor, err erro
         result = regex.NewProcessor(procConf.Name, re, &whitelistCodeRes)
     case processor_type.PEM{}.New().Value():
         pemType := pem.NewPEMTypeFromValue(procConf.PEMType)
-        result = pem.NewProcessor(procConf.Name, pemType)
+        result = pem.NewProcessor(procConf.Name, pemType, &whitelistCodeRes)
     case processor_type.Entropy{}.New().Value():
         ec := procConf.EntropyConfig
         result = entropy.NewProcessor(procConf.Name, ec.Charset, ec.LengthThreshold, ec.EntropyThreshold, &whitelistCodeRes, true)
@@ -450,11 +467,11 @@ func buildProcessor(procConf processorConfig) (result finder.Processor, err erro
 func validationAssertTrue(valid bool, configName string, messageTemplate string) {
     if !valid {
         message := fmt.Sprintf(messageTemplate, configName)
-        errors.LogErrorThenDie(log, errors.New(message))
+        fatal(message)
     }
 }
 
-func appendSecretsFromWhitelistDir(secretIDSet *structures.Set) error {
+func appendSecretsFromWhitelistDir(cfg config, secretIDSet *structures.Set) error {
     var reportedSecretFileMatch = regexp.MustCompile(`^secret-([0-9a-f]{5,40}).yaml$`)
     return filepath.Walk(cfg.WhitelistSecretDir,
         func(filePath string, info os.FileInfo, err error) error {
@@ -479,4 +496,33 @@ func validLogLevels() []string {
         logLevels = append(logLevels, l.String())
     }
     return logLevels
+}
+
+func printHelp(flags *pflag.FlagSet) {
+    div := strings.Repeat("=", len(appDescription))
+    fmt.Println("")
+    fmt.Println(div)
+    fmt.Println(appName)
+    fmt.Println(appDescription)
+    fmt.Println(appURL)
+    fmt.Println(div)
+    fmt.Println("")
+    fmt.Println(flags.FlagUsages())
+}
+
+func logConfig(flags *pflag.FlagSet, log logrus.FieldLogger) {
+    div := strings.Repeat("=", len(appDescription))
+    fmt.Println("")
+    fmt.Println(div)
+    fmt.Println(appName)
+    fmt.Println(appDescription)
+    fmt.Println(appURL)
+    fmt.Println(div)
+    fmt.Println("")
+    fmt.Println(flags.FlagUsages())
+}
+
+func fatal(message string) {
+    fmt.Println(message)
+    os.Exit(exitCodeErr)
 }
