@@ -169,16 +169,17 @@ func (p *Processor) findPasswordInURL(url *urlpkg.URL, urlString string, urlStar
 }
 
 func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue) {
-    if len(url.RawPath) < 5 {
+    escapedPath := url.EscapedPath()
+    if len(escapedPath) < 5 {
         return
     }
 
-    pathPieces := strings.Split(url.RawPath, "/")
+    pathPieces := strings.Split(escapedPath, "/")
     pathPiecesLen := len(pathPieces)
 
-    pathStartIndex := strings.Index(urlString, url.RawPath)
+    pathStartIndex := strings.Index(urlString, escapedPath)
     if pathStartIndex == -1 {
-        log.WithField("urlString", urlString).WithField("urlPath", url.RawPath).
+        log.WithField("urlString", urlString).WithField("urlPath", escapedPath).
             Warn("url.URL has a path but we can't find it in the original URL string")
         return
     }

@@ -4,9 +4,9 @@ package source_provider
 
 // SourceProviderEnum is the the enum interface that can be used
 type SourceProviderEnum interface {
-    String() string
-    Value() string
-    uniqueSourceProviderMethod()
+	String() string
+	Value() string
+	uniqueSourceProviderMethod()
 }
 
 // sourceProviderEnumBase is the internal, non-exported type
@@ -44,8 +44,8 @@ func (GitHub) String() string { return "GitHub" }
 func (GitHub) uniqueSourceProviderMethod() {}
 
 var internalSourceProviderEnumValues = []SourceProviderEnum{
-    Local{}.New(),
-    GitHub{}.New(),
+	Local{}.New(),
+	GitHub{}.New(),
 }
 
 // SourceProviderEnumValues will return a slice of all allowed enum value types
@@ -53,20 +53,20 @@ func SourceProviderEnumValues() []SourceProviderEnum { return internalSourceProv
 
 // NewSourceProviderFromValue will generate a valid enum from a value, or return nil in case of invalid value
 func NewSourceProviderFromValue(v string) (result SourceProviderEnum) {
-    switch v {
-    case valueLocal:
-        result = Local{}.New()
-    case valueGitHub:
-        result = GitHub{}.New()
-    }
-    return
+	switch v {
+	case valueLocal:
+		result = Local{}.New()
+	case valueGitHub:
+		result = GitHub{}.New()
+	}
+	return
 }
 
 // MustGetSourceProviderFromValue is the same as NewSourceProviderFromValue, but will panic in case of conversion failure
 func MustGetSourceProviderFromValue(v string) SourceProviderEnum {
-    result := NewSourceProviderFromValue(v)
-    if result == nil {
-        panic("invalid SourceProviderEnum value cast")
-    }
-    return result
+	result := NewSourceProviderFromValue(v)
+	if result == nil {
+		panic("invalid SourceProviderEnum value cast")
+	}
+	return result
 }
