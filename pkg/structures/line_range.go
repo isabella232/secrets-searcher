@@ -1,5 +1,7 @@
 package structures
 
+import "strings"
+
 type (
     LineRange struct {
         StartIndex int
@@ -13,6 +15,31 @@ type (
 
 func NewLineRange(startIndex, endIndex int) (result *LineRange) {
     return &LineRange{StartIndex: startIndex, EndIndex: endIndex}
+}
+
+func NewLineRangeFromFileRange(fileRange *FileRange, content string) (result *LineRange) {
+    var lineRangeStartIndex int
+    var lineRangeEndIndex int
+
+    if fileRange.StartLineNum == fileRange.EndLineNum {
+        return NewLineRange(fileRange.StartIndex, fileRange.EndIndex)
+    }
+
+    lines := strings.Split(content, "\n")
+
+    beforeLines := lines[:fileRange.StartLineNum-1]
+    beforeLinesLen := len(strings.Join(beforeLines, "")) + len(beforeLines)
+
+    startLine := lines[fileRange.StartLineNum-1]
+    startLineLen := len(startLine) + 1
+
+    middleLines := lines[fileRange.StartLineNum : fileRange.EndLineNum-1]
+    middleLinesLen := len(strings.Join(middleLines, "")) + len(middleLines)
+
+    lineRangeStartIndex = beforeLinesLen + fileRange.StartIndex
+    lineRangeEndIndex = beforeLinesLen + startLineLen + middleLinesLen + fileRange.EndIndex
+
+    return NewLineRange(lineRangeStartIndex, lineRangeEndIndex)
 }
 
 func (r LineRange) NewValue(valueString string) (result *LineRangeValue) {

@@ -2,14 +2,190 @@ package errors_test
 
 import (
     "fmt"
-    "strings"
+    "github.com/sirupsen/logrus"
     "testing"
 
-    "github.com/sirupsen/logrus"
-    "github.com/stretchr/testify/assert"
-
+    . "github.com/onsi/ginkgo"
+    . "github.com/onsi/ginkgo/extensions/table"
+    . "github.com/onsi/gomega"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
 )
+
+const (
+    errMsg     = "errMsg"
+    panicMsg   = "panicMsg"
+    prependMsg = "prependMsg"
+)
+
+var _ = Describe("Errors", func() {
+
+    DescribeTable("Value-add functions",
+        func(message string, args []interface{}, expected string) {
+
+            // Fire
+            response := errors.Errorv(message, args[0], args[1:]...)
+
+            Expect(response).To(Not(BeNil()))
+            Expect(response.Error()).To(Equal(expected))
+        },
+        Entry("string value",
+            errMsg, []interface{}{"bar"}, errMsg+" (bar)"),
+        Entry("nil value",
+            errMsg, []interface{}{nil}, errMsg+" ([nil])"),
+        Entry("empty string",
+            errMsg, []interface{}{""}, errMsg+" ([empty string])"),
+        Entry("multiple string values",
+            errMsg, []interface{}{"bar", "bar2"}, errMsg+" (bar; bar2)"),
+        Entry("logrus.Fields",
+            errMsg, []interface{}{logrus.Fields{"foo": "bar", "foo2": "bar2"}}, errMsg+" (foo=bar foo2=bar2)"),
+        Entry("struct with data",
+            errMsg, []interface{}{testStruct{foo: "bar", baz: "uuhhh"}}, errMsg+" ({foo:bar baz:uuhhh})"),
+    )
+
+    Describe("Categorizing panic handlers", func() {
+
+        Context("If a method panics", func() {
+
+            It("we should be able to catch the panic", func() {
+                response := func() (response interface{}) {
+
+                    // Fire
+                    defer errors.CatchPanicValueDo(func(recovered interface{}) {
+                        response = recovered
+                    })
+                    panic(panicMsg)
+
+                    return
+                }()
+
+                Expect(response).To(Equal(panicMsg))
+            })
+
+            It("we should be able to catch the panic as an error", func() {
+                response := func() (response error) {
+
+                    // Fire
+                    defer errors.CatchPanicDo(func(err error) {
+                        response = err
+                    })
+                    panic(panicMsg)
+
+                    return
+                }()
+
+                Expect(response).To(Not(BeNil()))
+                Expect(response.Error()).To(Equal("panic caught: " + panicMsg))
+            })
+
+            It("we should be able to catch the panic and set an error var with message", func() {
+                response := func() (response error) {
+
+                    // Fire
+                    defer errors.CatchPanicSetErr(&response, prependMsg)
+                    panic(panicMsg)
+
+                    return
+                }()
+
+                Expect(response).To(Not(BeNil()))
+                Expect(response.Error()).To(Equal(prependMsg + ": panic caught: " + panicMsg))
+            })
+        })
+    })
+
+    Describe("Categorizing stacktrace building", func() {
+
+        Context("If an error is provided that directly contains a stacktrace", func() {
+
+            It("it should be returned with StackTrace()", func() {
+                err := errors.New("") // Stacktrace recorded
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(Not(BeEmpty()))
+            })
+        })
+
+        Context("If an error is provided whose root error contains a stacktrace", func() {
+
+            It("it should be returned with StackTrace()", func() {
+                err0 := errors.New("")               // Stacktrace recorded
+                err1 := errors.WithMessage(err0, "") // No stacktrace
+                err := errors.WithMessage(err1, "")  // No stacktrace
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(Not(BeEmpty()))
+            })
+        })
+
+        Context("If an error is provided whose ancestor error contains a stacktrace", func() {
+
+            It("it should be returned with StackTrace()", func() {
+                err0 := &simpleError{msg: ""}       // No stacktrace
+                err1 := errors.Wrap(err0, "")       // Stacktrace recorded
+                err := errors.WithMessage(err1, "") // No stacktrace
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(Not(BeEmpty()))
+            })
+        })
+
+        Context("If an error is provided whose ancestor error contains a caught panic", func() {
+
+            It("a stacktrace should be returned with StackTrace()", func() {
+                var err error
+                func() {
+                    defer errors.CatchPanicSetErr(&err, "") // Stacktrace recorded
+                    panic(panicMsg)
+                }()
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(Not(BeEmpty()))
+            })
+        })
+
+        Context("If an error has nested stacktraces", func() {
+
+            It("the innermost stacktrace should be returned by StackTrace()", func() {
+                err0 := errors.New("")               // Stacktrace recorded
+                err1 := errors.WithMessage(err0, "") // No stacktrace
+                err2 := errors.WithMessage(err1, "") // No stacktrace
+                err := errors.Wrap(err2, "")         // Stacktrace recorded again
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(Not(BeEmpty()))
+                firstFunctionName := fmt.Sprintf("%+v", stacktrace[0])
+                Expect(firstFunctionName).To(ContainSubstring("errors.New"))
+            })
+        })
+
+        Context("If an error is provided that contains no stacktrace", func() {
+
+            It("nothing should be returned with StackTrace()", func() {
+                err := &simpleError{msg: ""} // No stacktrace
+
+                // Fire
+                stacktrace := errors.StackTrace(err)
+
+                Expect(stacktrace).To(BeEmpty())
+            })
+        })
+    })
+})
+
+func TestErrors(t *testing.T) {
+    RegisterFailHandler(Fail)
+    RunSpecs(t, "Errors Suite")
+}
 
 type simpleError struct {
     msg string
@@ -17,59 +193,9 @@ type simpleError struct {
 
 func (f *simpleError) Error() string { return f.msg }
 
-func TestErrorv(t *testing.T) {
-    var halfTests = []struct {
-        message  string
-        args     []interface{}
-        expected string
-    }{
-        {"error string", []interface{}{"bar"}, "error string (bar)"},
-        {"error string", []interface{}{nil}, "error string ([nil])"},
-        {"error string", []interface{}{""}, "error string ([empty string])"},
-        {"error string", []interface{}{"bar", "bar2"}, "error string (bar; bar2)"},
-        {"error string", []interface{}{logrus.Fields{"foo": "bar", "foo2": "bar2"}}, "error string (foo=bar foo2=bar2)"},
-    }
-
-    for _, tt := range halfTests {
-
-        // Fire
-        err := errors.Errorv(tt.message, tt.args...)
-
-        assert.Error(t, err)
-        assert.Equal(t, tt.expected, err.Error())
-    }
+type testStruct struct {
+    foo string
+    baz string
 }
 
-func TestStackTrace_happy(t *testing.T) {
-    err0 := errors.New("Message 0")
-    err1 := errors.WithMessage(err0, "Message 1")
-    err2 := errors.WithMessage(err1, "Message 2")
-
-    stacktrace := errors.StackTrace(err2)
-
-    assert.Greater(t, len(stacktrace), 0)
-}
-
-func TestStackTrace_stackTraceNotOnCause(t *testing.T) {
-    err0 := &simpleError{msg: "Resource not found (resource=binding-file-ops-malwares)."}
-    err1 := errors.Wrap(err0, "unable to start pubsub subscription (subscriptionID=binding-file-ops-malwares)")
-    err2 := errors.WithMessage(err1, "unable to run subscriber")
-
-    stacktrace := errors.StackTrace(err2)
-
-    assert.Greater(t, len(stacktrace), 0)
-    assert.NotEmpty(t, stacktrace)
-}
-
-func TestStackTrace_stackTraceDoubled_returnInnermost(t *testing.T) {
-    err0 := errors.New("Message 0") // Stacktrace recorded
-    err1 := errors.WithMessage(err0, "Message 1")
-    err2 := errors.WithMessage(err1, "Message 2")
-    err3 := errors.Wrap(err2, "Message 3") // Stacktrace recorded again
-
-    stacktrace := errors.StackTrace(err3)
-
-    assert.Greater(t, len(stacktrace), 0)
-    functionName := fmt.Sprintf("%+v", stacktrace[0])
-    assert.True(t, strings.Contains(functionName, "errors.New"))
-}
+func (ts testStruct) HopefullyHiddenFunction() string { return "hi" }

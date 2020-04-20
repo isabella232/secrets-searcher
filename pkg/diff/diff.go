@@ -2,46 +2,41 @@ package diff
 
 import (
     "fmt"
-    "github.com/pantheon-systems/search-secrets/pkg/dev"
+    "github.com/pantheon-systems/search-secrets/pkg/dbug"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
+    "github.com/sirupsen/logrus"
     "strings"
 )
 
 const (
-    EqualPrefix  = " "
-    AddPrefix    = "+"
-    DeletePrefix = "-"
+    equalPrefix  = " "
+    addPrefix    = "+"
+    deletePrefix = "-"
 )
+
+var errEOF = eofError{}
 
 type (
     Diff struct {
-        Line        *Line
-        lineStrings []string
-        lineMap     map[int]int
+        Line                 *Line
+        lineStrings          []string
+        lineStringsLen       int
+        diffToFileLineNumMap map[int]int // FIXME This shouldn't need to be passed in
     }
-    lineMatch func(line *Line) bool
+    lineMatch  func(line *Line) bool
+    lineAction func(line *Line)
+    eofError   struct{}
 )
 
-func NewFromChunks(chunks []gitdiff.Chunk) (result *Diff, err error) {
-    if len(chunks) == 0 {
-        err = errors.New("no chunks passed")
-    }
-
-    var lineMap map[int]int
-    var lineStrings []string
-    lineMap, lineStrings, err = buildDiffLineInfo(chunks)
-    if err != nil {
-        return
-    }
-
+func New(lineStrings []string, lineMap map[int]int) (result *Diff, err error) {
     diff := &Diff{
-        lineStrings: lineStrings,
-        lineMap:     lineMap,
+        lineStrings:          lineStrings,
+        lineStringsLen:       len(lineStrings),
+        diffToFileLineNumMap: lineMap,
     }
 
-    if ok := diff.SetLine(1); !ok {
-        err = errors.Errorv("unable to set line to 1")
+    if err = diff.SetLine(1); err != nil {
+        err = errors.New("unable to set line to 1")
         return
     }
 
@@ -50,125 +45,165 @@ func NewFromChunks(chunks []gitdiff.Chunk) (result *Diff, err error) {
     return
 }
 
-func (d *Diff) WhileTrueCollectCode(lineMatch lineMatch, collected *[]string) (ok bool) {
+func (d *Diff) WhileTrueDo(lineMatch lineMatch, lineAction lineAction) (err error) {
     for searching := lineMatch(d.Line); searching; searching = lineMatch(d.Line) {
-        *collected = append(*collected, d.Line.Code)
-        if ok = d.Increment(); !ok {
+        lineAction(d.Line)
+        if err = d.Increment(); err != nil {
+            err = errors.WithMessage(err, "unable to incrememt once while searching line matches")
             return
         }
     }
-    return true
+    return
 }
 
-func (d *Diff) WhileTrueIncrement(lineMatch lineMatch) (ok bool) {
-    for searching := lineMatch(d.Line); searching; searching = lineMatch(d.Line) {
-        if ok = d.Increment(); !ok {
-            return
-        }
+func (d *Diff) WhileTrueCollectCode(lineMatch lineMatch, collected *[]string) (err error) {
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {
+        *collected = append(*collected, line.Code)
+    })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect code while line matches")
     }
-    return true
+    return
 }
 
-func (d *Diff) UntilTrueCollectCode(lineMatch lineMatch, collected *[]string) (ok bool) {
-    return d.WhileTrueCollectCode(func(line *Line) bool { return !lineMatch(line) }, collected)
-}
-
-func (d *Diff) UntilTrueIncrement(lineMatch lineMatch) (ok bool) {
-    return d.WhileTrueIncrement(func(line *Line) bool { return !lineMatch(line) })
-}
-
-func (d *Diff) Increment() (ok bool) {
-    return d.SetLine(d.Line.LineNumDiff + 1)
-}
-
-func (d *Diff) SetLine(lineNumDiff int) (ok bool) {
-    if dev.Enabled && dev.DiffLine > 0 && lineNumDiff == dev.DiffLine {
-        fmt.Print("")
+func (d *Diff) WhileTrueCollectTrimmedCode(lineMatch lineMatch, collected *[]string, cutset string) (err error) {
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {
+        *collected = append(*collected, strings.Trim(line.Code, cutset))
+    })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect trimmed code while line matches")
     }
+    return
+}
 
+func (d *Diff) WhileTrueIncrement(lineMatch lineMatch) (err error) {
+    err = d.WhileTrueDo(lineMatch, func(line *Line) {})
+    if err != nil {
+        err = errors.WithMessage(err, "unable to increment line while line matches")
+    }
+    return
+}
+
+func (d *Diff) UntilTrueCollectCode(lineMatch lineMatch, collected *[]string) (err error) {
+    err = d.WhileTrueCollectCode(func(line *Line) bool { return !lineMatch(line) }, collected)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect code until line matches")
+    }
+    return
+}
+
+func (d *Diff) UntilTrueCollectTrimmedCode(lineMatch lineMatch, collected *[]string, cutset string) (err error) {
+    err = d.WhileTrueCollectTrimmedCode(func(line *Line) bool { return !lineMatch(line) }, collected, cutset)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to collect trimmed code until line matches")
+    }
+    return
+}
+
+func (d *Diff) UntilTrueIncrement(lineMatch lineMatch) (err error) {
+    err = d.WhileTrueIncrement(func(line *Line) bool { return !lineMatch(line) })
+    if err != nil {
+        err = errors.WithMessage(err, "unable to increment line until line matches")
+    }
+    return
+}
+
+func (d *Diff) Increment() (err error) {
+    num := d.Line.LineNum + 1
+    if err = d.SetLine(num); err != nil {
+        err = errors.WithMessagef(err, "unable to increment line to %d", num)
+    }
+    return
+}
+
+func (d *Diff) SetLine(lineNum int) (err error) {
     var line *Line
-    line, ok = d.buildLine(lineNumDiff)
-    if !ok {
+    line, err = d.buildLine(lineNum)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to build line")
         return
     }
 
     d.Line = line
 
+    if dbug.Cnf.Enabled {
+        lineNumFile, _ := d.fileLineNum(lineNum)
+        if dbug.Cnf.FilterConfig.Line > -1 && lineNumFile == dbug.Cnf.FilterConfig.Line {
+            fmt.Print("") // For breakpoint
+        }
+    }
+
     return
 }
 
-func (d *Diff) PeekNextLine() (result *Line, ok bool) {
-    return d.buildLine(d.Line.LineNumDiff + 1)
+func (d *Diff) PeekNextLine() (result *Line, err error) {
+    result, err = d.buildLine(d.Line.LineNum + 1)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to peek at next line")
+    }
+    return
+}
+
+func (d *Diff) Lines() (result []string) {
+    return d.lineStrings
 }
 
 func (d *Diff) String() (result string) {
     return strings.Join(d.lineStrings, "\n")
 }
 
-func (d *Diff) lineExists(lineNum int) bool {
-    return lineNum <= len(d.lineStrings)
+func (e eofError) Error() (result string) {
+    return "EOF"
 }
 
-func (d *Diff) buildLine(lineNumDiff int) (result *Line, ok bool) {
-    if !d.lineExists(lineNumDiff) {
+func IsEOF(err error) bool {
+    cause := errors.Cause(err)
+    switch cause.(type) {
+    case eofError:
+        return true
+    }
+    return false
+}
+
+func (d *Diff) buildLine(lineNumDiff int) (result *Line, err error) {
+    if lineNumDiff < 1 {
+        err = errors.New("cannot build a line less than 1")
+    }
+    if lineNumDiff > len(d.lineStrings) {
+        err = errors.WithMessage(errEOF, "end of file")
         return
     }
 
-    var lineNumFile = d.fileLineNum(lineNumDiff)
+    lineNumFile, ok := d.fileLineNum(lineNumDiff)
+    if !ok {
+        err = errors.Errorv("unable to get mapped line", lineNumDiff)
+        return
+    }
 
     result = NewLine(d.lineStrings[(lineNumDiff-1)], lineNumDiff, lineNumFile)
 
-    ok = true
     return
 }
 
-func (d *Diff) fileLineNum(diffLineNum int) (result int) {
-    result, _ = d.lineMap[diffLineNum]
+func (d *Diff) fileLineNum(diffLineNum int) (result int, ok bool) {
+    result, ok = d.diffToFileLineNumMap[diffLineNum]
     return
 }
 
-func buildDiffLineInfo(chunks []gitdiff.Chunk) (result map[int]int, diffLines []string, err error) {
-    fileLineNum := 1
-    diffLineNum := 1
+func (d *Diff) IsLastLine() bool {
+    return d.lineStringsLen == d.Line.LineNum
+}
 
-    result = map[int]int{}
-    for _, chunk := range chunks {
-        chunkString := chunk.Content()
+var eofWarning bool
 
-        // Remove the trailing line break
-        chunkLen := len(chunkString)
-        if chunkLen > 0 && chunkString[chunkLen-1:] == "\n" {
-            chunkString = chunkString[:chunkLen-1]
-        }
-
-        lines := strings.Split(chunkString, "\n")
-        prefix := GetPrefix(chunk.Type())
-
-        for _, line := range lines {
-            result[diffLineNum] = fileLineNum
-
-            diffLines = append(diffLines, prefix+line)
-
-            // Prepare for next
-            diffLineNum += 1
-            if chunk.Type() != gitdiff.Delete {
-                fileLineNum += 1
-            }
-        }
+// Stupid, I know. But it helps clear up these types of errors
+func EOFErrFilter(err error, log logrus.FieldLogger) error {
+    if err == nil || !IsEOF(err) || eofWarning {
+        return err
     }
 
-    return
-}
+    errors.ErrLog(log, err).Warn("clean up your diff code, this is an uncaught EOF error!")
+    eofWarning = true
 
-func GetPrefix(chunkType gitdiff.Operation) (result string) {
-    switch chunkType {
-    case gitdiff.Equal:
-        return EqualPrefix
-    case gitdiff.Delete:
-        return DeletePrefix
-    case gitdiff.Add:
-        return AddPrefix
-    default:
-        panic(errors.Errorv("unknown chunk type", chunkType))
-    }
+    return nil
 }

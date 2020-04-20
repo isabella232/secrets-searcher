@@ -3,109 +3,142 @@ package reporter
 import (
     "fmt"
     "github.com/pantheon-systems/search-secrets/pkg/database"
-    "github.com/pantheon-systems/search-secrets/pkg/dev"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     "path"
+    "path/filepath"
     "sort"
     "strings"
     "time"
 )
 
 type (
-    Builder struct {
-        appURL string
-        db     *database.Database
-        log    *logrus.Logger
+    builder struct {
+        appURL            string
+        enableDebugOutput bool
+        reportDir         string
+        secretsDir        string
+        db                *database.Database
+        log               logrus.FieldLogger
     }
     reportData struct {
-        ReportDate time.Time
-        AppURL     string
-        Repos      []string
-        DevEnabled bool
-        Secrets    []secretData
+        ReportDate        time.Time
+        AppLink           linkData
+        Repos             []string
+        DbgEnabled        bool
+        Secrets           []*secretData
+        EnableDebugOutput bool
     }
     secretData struct {
-        ID           string        `yaml:"secret-id"`
-        Value        string        `yaml:"value"`
-        ValueLen     int           `yaml:"-"`
-        ValueDecoded string        `yaml:"value-decoded"`
-        Findings     []findingData `yaml:"findings"`
+        ID            string         `yaml:"secret-id"`
+        Value         string         `yaml:"value"`
+        ValueLen      int            `yaml:"-"`
+        ValueFilePath string         `yaml:"-"`
+        Extras        []*extraData   `yaml:"extras"`
+        Findings      []*findingData `yaml:"findings"`
     }
     findingData struct {
-        ID                  string    `yaml:"finding-id"`
-        RuleName            string    `yaml:"rule"`
-        RepoName            string    `yaml:"-"`
-        RepoFullLink        linkData  `yaml:"repo"`
-        CommitHash          string    `yaml:"-"`
-        CommitHashLink      linkData  `yaml:"commit"`
-        CommitHashLinkShort linkData  `yaml:"-"`
-        CommitDate          time.Time `yaml:"commit-date"`
-        CommitAuthorEmail   string    `yaml:"-"`
-        CommitAuthorFull    string    `yaml:"commit-author"`
-        FilePath            string    `yaml:"-"`
-        FileLineLink        linkData  `yaml:"file-location"`
-        FileLineLinkShort   linkData  `yaml:"-"`
-        StartLineNumDiff    int       `yaml:"-"`
-        ColStartIndex       int       `yaml:"col-start-index"`
-        ColEndIndex         int       `yaml:"col-end-index"`
-        ColIndexDiff        int
-        RawFileLink         linkData `yaml:"raw-file-location"`
-        CodeShort           string   `yaml:"-"`
-        Code                string   `yaml:"-"`
-        CodeTrimmed         string   `yaml:"code"`
-        CodeShowGuide       bool
-        Diff                string `yaml:"diff"`
+        ID                  string       `yaml:"finding-id"`
+        ProcessorName       string       `yaml:"processor"`
+        RepoName            string       `yaml:"-"`
+        RepoFullLink        linkData     `yaml:"repo"`
+        CommitHash          string       `yaml:"-"`
+        CommitHashLink      linkData     `yaml:"commit"`
+        CommitHashLinkShort linkData     `yaml:"-"`
+        CommitDate          time.Time    `yaml:"commit-date"`
+        CommitAuthorEmail   string       `yaml:"-"`
+        CommitAuthorFull    string       `yaml:"commit-author"`
+        FilePath            string       `yaml:"-"`
+        FileLineLink        linkData     `yaml:"file-location"`
+        FileLineLinkShort   linkData     `yaml:"-"`
+        ColStartIndex       int          `yaml:"col-start-index"`
+        ColEndIndex         int          `yaml:"col-end-index"`
+        CodeShort           string       `yaml:"-"`
+        Code                string       `yaml:"-"`
+        CodeIsFile          bool         `yaml:"code-is-whole-file"`
+        CodeTrimmed         string       `yaml:"code"`
+        CodeShowGuide       bool         `yaml:"-"`
+        Extras              []*extraData `yaml:"extras"`
+    }
+    extraData struct {
+        Key    string    `yaml:"key"`
+        Header string    `yaml:"-"`
+        Value  string    `yaml:"value"`
+        Code   bool      `yaml:"-"`
+        URL    string    `yaml:"url"`
+        Link   *linkData `yaml:"-"`
     }
     linkData struct {
         Label   string `yaml:"label"`
         URL     string `yaml:"url"`
-        Tooltip string `yaml:"tooltip"`
+        Tooltip string `yaml:"-"`
     }
 )
 
-func NewBuilder(appURL string, db *database.Database, log *logrus.Logger) *Builder {
-    return &Builder{
-        appURL: appURL,
-        db:     db,
-        log:    log,
+func newBuilder(appURL string, enableDebugOutput bool, reportDir, secretsDir string, db *database.Database, log logrus.FieldLogger) *builder {
+    return &builder{
+        appURL:            appURL,
+        enableDebugOutput: enableDebugOutput,
+        reportDir:         reportDir,
+        secretsDir:        secretsDir,
+        db:                db,
+        log:               log,
     }
 }
 
-func (r *Builder) buildReportData() (result *reportData, err error) {
-    r.log.Debug("getting list of secrets ...")
+func (b *builder) buildReportData() (result *reportData, err error) {
+    b.log.Debug("getting list of secrets ...")
+    var ok bool
 
-    var sfsBySecret map[*database.Secret][]*database.SecretFinding
-    sfsBySecret, err = r.db.GetSecretFindingsGroupedBySecret()
+    var secrets database.Secrets
+    secrets, err = b.db.GetSecretsSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secrets")
         return
     }
 
-    // Sort secrets since they were just in a map and lost order
-    var secrets []*database.Secret
-    for secret := range sfsBySecret {
-        secrets = append(secrets, secret)
+    var findingsBySecret database.FindingGroups
+    findingsBySecret, err = b.db.GetFindingsSortedGroupedBySecretID()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
+        return
     }
-    r.db.SortSecrets(secrets)
 
-    var reportSecrets []secretData
-    var ok bool
+    var findingExtrasByFinding database.FindingExtraGroups
+    findingExtrasByFinding, err = b.db.GetFindingExtrasSortedGroupedByFindingID()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
+        return
+    }
+
+    var secretExtrasBySecretID database.SecretExtraGroups
+    secretExtrasBySecretID, err = b.db.GetSecretExtrasSortedGroupedBySecretID()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get secret extras")
+        return
+    }
+
+    var reportSecrets []*secretData
     for _, secret := range secrets {
-        var sfs []*database.SecretFinding
-        sfs, ok = sfsBySecret[secret]
+        var findings []*database.Finding
+        findings, ok = findingsBySecret[secret.ID]
         if !ok {
-            err = errors.New("secret does not exist as index")
+            err = errors.Errorv("unable to find secret for finding group", secret.ID)
             return
         }
+
+        var secretExtras database.SecretExtras
+        secretExtras, _ = secretExtrasBySecretID[secret.ID]
 
         var secretData *secretData
-        secretData, err = r.buildSecretData(secret, sfs)
+        secretData, err = b.buildSecretData(secret, secretExtras, findings, findingExtrasByFinding)
         if err != nil {
+            err = errors.WithMessage(err, "unable to build secret data")
             return
         }
 
-        reportSecrets = append(reportSecrets, *secretData)
+        reportSecrets = append(reportSecrets, secretData)
     }
 
     repos := structures.NewSet(nil)
@@ -118,120 +151,216 @@ func (r *Builder) buildReportData() (result *reportData, err error) {
     sort.Strings(repoNames)
 
     result = &reportData{
-        ReportDate: time.Now(),
-        AppURL:     r.appURL,
-        Repos:      repoNames,
-        DevEnabled: dev.Enabled,
-        Secrets:    reportSecrets,
+        ReportDate:        time.Now(),
+        AppLink:           linkData{URL: b.appURL, Label: b.appURL},
+        Repos:             repoNames,
+        EnableDebugOutput: b.enableDebugOutput,
+        Secrets:           reportSecrets,
     }
 
     return
 }
 
-func (r *Builder) buildSecretData(secret *database.Secret, sfs []*database.SecretFinding) (result *secretData, err error) {
-    var findings []findingData
-    for _, dec := range sfs {
-        var findingData findingData
-        findingData, err = r.buildFindingData(dec)
+func (b *builder) buildSecretData(secret *database.Secret, secretExtras database.SecretExtras, findings []*database.Finding, findingExtrasByFindingID database.FindingExtraGroups) (result *secretData, err error) {
+    var findingDatas []*findingData
+    for _, finding := range findings {
+        var findingExtras database.FindingExtras
+        findingExtras, _ = findingExtrasByFindingID[finding.ID]
+
+        var findingData *findingData
+        findingData, err = b.buildFindingData(finding, findingExtras)
         if err != nil {
+            err = errors.WithMessage(err, "unable to build finding data")
             return
         }
 
-        findings = append(findings, findingData)
+        findingDatas = append(findingDatas, findingData)
     }
 
-    result = &secretData{
-        ID:           secret.ID,
-        Value:        secret.Value,
-        ValueLen:     len(secret.Value),
-        ValueDecoded: secret.ValueDecoded,
+    var secretExtraDatas []*extraData
+    for _, secretExtra := range secretExtras {
+        secretExtraDatas = append(secretExtraDatas, b.buildSecretExtraData(secretExtra))
+    }
 
-        Findings: findings,
+    // Link to the raw file
+    var valueFilePath string
+    secretValueFilePath := b.getSecretValueFilePath(findingDatas)
+    if secretValueFilePath != "" {
+        secretValueFileBasename := path.Base(secretValueFilePath)
+        secretDirRel := strings.TrimPrefix(b.secretsDir, b.reportDir)[1:]
+        url := path.Join(secretDirRel, secret.ID, secretValueFileBasename)
+
+        valueFilePath = filepath.Join(b.secretsDir, secret.ID, secretValueFileBasename)
+
+        secretExtraDatas = append(secretExtraDatas, &extraData{
+            Key:    "raw-file",
+            Header: "Raw file",
+            Link: &linkData{
+                Label: secretValueFileBasename,
+                URL:   url,
+            },
+        })
+    }
+
+    // Sort findings by commit date
+    sort.Slice(findingDatas, func(i, j int) bool { return findingDatas[i].CommitDate.Before(findingDatas[j].CommitDate) })
+
+    result = &secretData{
+        ID:            secret.ID,
+        Value:         secret.Value,
+        ValueLen:      len(secret.Value),
+        ValueFilePath: valueFilePath,
+        Extras:        secretExtraDatas,
+        Findings:      findingDatas,
     }
 
     return
 }
 
-func (r *Builder) buildFindingData(dec *database.SecretFinding) (result findingData, err error) {
-    var finding *database.Finding
-    finding, err = r.db.GetFinding(dec.FindingID)
-    if err != nil {
-        return
+func (b *builder) getSecretValueFilePath(findingDatas []*findingData) (result string) {
+    for _, findingData := range findingDatas {
+        if findingData.CodeIsFile {
+            return findingData.FilePath
+        }
     }
+    return
+}
 
+func (b *builder) buildFindingData(finding *database.Finding, findingExtras database.FindingExtras) (result *findingData, err error) {
     var commit *database.Commit
-    commit, err = r.db.GetCommit(finding.CommitID)
+    commit, err = b.db.GetCommit(finding.CommitID)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commit")
         return
     }
 
     var repo *database.Repo
-    repo, err = r.db.GetRepo(commit.RepoID)
+    repo, err = b.db.GetRepo(commit.RepoID)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repo")
         return
     }
 
-    commitURL := path.Join(repo.HTMLURL, "commit", commit.CommitHash)
-
-    fileLineLabelFormat := "%s, line %d, col %d"
-    if dev.Enabled {
-        fileLineLabelFormat += " (diff line %d)"
+    var findingExtraDatas []*extraData
+    for _, findingExtra := range findingExtras {
+        findingExtraData := b.buildFindingExtraData(findingExtra)
+        findingExtraDatas = append(findingExtraDatas, findingExtraData)
+    }
+    if b.enableDebugOutput {
+        findingExtraDatas = append(findingExtraDatas, &extraData{
+            Key:    "dbug-config",
+            Header: "Debug config",
+            Value:  b.buildDbugConfig(repo, commit, finding),
+            Code:   true,
+        })
     }
 
+    commitURL := path.Join(repo.HTMLURL, "commit", commit.CommitHash)
+    commitLink := linkData{Label: commit.CommitHash, URL: commitURL}
+    commitLinkShort := linkData{Label: commit.CommitHash[:7], URL: commitURL, Tooltip: commit.CommitHash}
+
     fileLineURL := getLineURLLink(repo, commit, finding)
-    fileLineLabel := fmt.Sprintf(fileLineLabelFormat, finding.Path, finding.StartLineNum, finding.StartIndex+1, finding.StartDiffLineNum)
+    fileLineLabel, fileLineLabelShort := b.getFileLineLabels(finding)
     fileLineLink := linkData{Label: fileLineLabel, URL: fileLineURL}
+    fileLineLinkShort := linkData{Label: fileLineLabelShort, URL: fileLineURL, Tooltip: fileLineLabel}
 
-    fileLineShortLabel := fmt.Sprintf(fileLineLabelFormat, path.Base(finding.Path), finding.StartLineNum, finding.StartIndex+1, finding.StartDiffLineNum)
-    fileLineShortLink := linkData{Label: fileLineShortLabel, URL: fileLineURL, Tooltip: fileLineLabel}
-
-    rawFileURL := getRawURLLink(repo, commit, finding)
-    rawFileLabel := fmt.Sprintf("%s, line %d", finding.Path, finding.StartLineNum)
-    rawFileLink := linkData{Label: rawFileLabel, URL: rawFileURL}
-
-    result = findingData{
+    result = &findingData{
         ID:                  finding.ID,
-        RuleName:            finding.Rule,
+        ProcessorName:       finding.Processor,
         RepoName:            repo.Name,
         RepoFullLink:        linkData{Label: repo.FullName, URL: repo.HTMLURL},
         CommitHash:          commit.CommitHash,
-        CommitHashLink:      linkData{Label: commit.CommitHash, URL: commitURL},
-        CommitHashLinkShort: linkData{Label: commit.CommitHash[:7], URL: commitURL, Tooltip: commit.CommitHash},
+        CommitHashLink:      commitLink,
+        CommitHashLinkShort: commitLinkShort,
         CommitDate:          commit.Date,
         CommitAuthorEmail:   commit.AuthorEmail,
         CommitAuthorFull:    commit.AuthorFull,
         FilePath:            finding.Path,
         FileLineLink:        fileLineLink,
-        FileLineLinkShort:   fileLineShortLink,
-        StartLineNumDiff:    finding.StartDiffLineNum,
+        FileLineLinkShort:   fileLineLinkShort,
         ColStartIndex:       finding.StartIndex,
         ColEndIndex:         finding.EndIndex,
-        ColIndexDiff:        finding.EndIndex - finding.StartIndex,
-        RawFileLink:         rawFileLink,
         Code:                finding.Code,
+        CodeIsFile:          finding.CodeIsFile,
         CodeTrimmed:         strings.TrimRight(finding.Code, "\n"),
         CodeShowGuide:       finding.StartLineNum == finding.EndLineNum,
-        Diff:                finding.Diff,
+        Extras:              findingExtraDatas,
     }
 
     return
+}
+
+func (b *builder) getFileLineLabels(finding *database.Finding) (label, labelShort string) {
+
+    // "file.go"
+    filePathShort := filepath.Base(finding.Path)
+
+    // ", line 123, col 123"
+    lineColSuffix := fmt.Sprintf(", line %d, col %d", finding.StartLineNum, finding.StartIndex+1)
+
+    // "path/to/file.go, line 123, col 123"
+    label = finding.Path + lineColSuffix
+
+    // "file.go, line 123, col 123"
+    labelShort = filePathShort + lineColSuffix
+
+    return
+}
+
+func (b *builder) buildFindingExtraData(extra *database.FindingExtra) *extraData {
+    var link *linkData
+    if extra.URL != "" {
+        link = b.buildExtraLink(extra.Value, extra.URL)
+    }
+
+    return &extraData{
+        Key:    extra.Key,
+        Header: extra.Header,
+        Value:  extra.Value,
+        Code:   extra.Code,
+        Link:   link,
+    }
+}
+
+func (b *builder) buildSecretExtraData(extra *database.SecretExtra) *extraData {
+    var link *linkData
+    if extra.URL != "" {
+        link = b.buildExtraLink(extra.Value, extra.URL)
+    }
+
+    return &extraData{
+        Key:    extra.Key,
+        Header: extra.Header,
+        Value:  extra.Value,
+        Code:   extra.Code,
+        Link:   link,
+    }
+}
+
+func (b *builder) buildExtraLink(label, url string) (result *linkData) {
+    if url != "" {
+        return &linkData{label, url, ""}
+    }
+    return
+}
+
+func (b *builder) buildDbugConfig(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
+    var sb strings.Builder
+    fmt.Fprintf(&sb, "  filter:\n")
+    fmt.Fprintf(&sb, "    repo: '%s'\n", repo.Name)
+    fmt.Fprintf(&sb, "    processor: '%s'\n", finding.Processor)
+    fmt.Fprintf(&sb, "    commit: '%s'\n", commit.CommitHash)
+    fmt.Fprintf(&sb, "    path: '%s'\n", finding.Path)
+    fmt.Fprintf(&sb, "    line: %d\n", finding.StartLineNum)
+
+    return sb.String()
 }
 
 func getLineURLLink(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
     baseURL := path.Join(repo.HTMLURL, "blob", commit.CommitHash, finding.Path)
     result = fmt.Sprintf("%s#L%d", baseURL, finding.StartLineNum)
     if finding.StartLineNum != finding.EndLineNum {
-        result = fmt.Sprintf("%s-%d", result, finding.EndLineNum)
-    }
-
-    return
-}
-
-func getRawURLLink(repo *database.Repo, commit *database.Commit, finding *database.Finding) (result string) {
-    baseURL := path.Join(repo.HTMLURL, "blob", commit.CommitHash, finding.Path)
-    result = fmt.Sprintf("%s#L%d", baseURL, finding.StartLineNum)
-    if finding.StartLineNum != finding.EndLineNum {
-        result = fmt.Sprintf("%s-%d", result, finding.EndLineNum)
+        result = fmt.Sprintf("%s-L%d", result, finding.EndLineNum)
     }
 
     return

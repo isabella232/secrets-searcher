@@ -19,6 +19,7 @@ func HasHighEntropy(inputString, charsetName string, entropyThreshold float64) (
     var charsetChars string
     charsetChars, err = getCharsetChars(charsetName)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to get charset characters for name", charsetName)
         return
     }
 
@@ -34,8 +35,10 @@ func HasHighEntropy(inputString, charsetName string, entropyThreshold float64) (
 }
 
 func FindHighEntropyWords(inputString, charsetName string, lengthThreshold int, entropyThreshold float64) (result []*structures.LineRangeValue, err error) {
-    charsetChars, err := getCharsetChars(charsetName)
+    var charsetChars string
+    charsetChars, err = getCharsetChars(charsetName)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to get charset characters for name", charsetName)
         return
     }
 
@@ -77,7 +80,7 @@ func isStringOfCharset(input, charsetChars string) (result bool) {
     return true
 }
 
-func findLongStringsOfCharset(input, charsetChars string, threshold int) (result []structures.LineRange) {
+func findLongStringsOfCharset(input, charsetChars string, threshold int) (result []*structures.LineRange) {
     var startIndex int
     var currentIndex int
 
@@ -90,14 +93,14 @@ func findLongStringsOfCharset(input, charsetChars string, threshold int) (result
         }
 
         if currentIndex-startIndex >= threshold {
-            result = append(result, structures.LineRange{StartIndex: startIndex, EndIndex: currentIndex})
+            result = append(result, structures.NewLineRange(startIndex, currentIndex))
         }
 
         startIndex = currentIndex + 1
     }
 
     if currentIndex-startIndex >= threshold {
-        result = append(result, structures.LineRange{StartIndex: startIndex, EndIndex: currentIndex + 1})
+        result = append(result, structures.NewLineRange(startIndex, currentIndex+1))
     }
 
     return

@@ -3,7 +3,9 @@ package code
 import (
     "github.com/pantheon-systems/search-secrets/pkg/database"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
+    gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
     interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
+    "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirsean/go-pool"
     "github.com/sirupsen/logrus"
     "path/filepath"
@@ -14,45 +16,54 @@ import (
 type (
     Code struct {
         sourceProvider SourceProvider
+        repoFilter     *structures.Filter
         codeDir        string
         interact       interactpkg.Interactish
+        skipSourcePrep bool
         db             *database.Database
-        log            *logrus.Logger
+        log            logrus.FieldLogger
     }
     SourceProvider interface {
+        GetName() string
         GetRepositories() (result []*RepoInfo, err error)
     }
     RepoInfo struct {
-        Name     string
-        FullName string
-        Owner    string
-        SSHURL   string
-        HTMLURL  string
+        Name           string
+        SourceProvider string
+        FullName       string
+        Owner          string
+        SSHURL         string
+        HTMLURL        string
     }
 )
 
-func New(sourceProvider SourceProvider, codeDir string, interact interactpkg.Interactish, db *database.Database, log *logrus.Logger) *Code {
+func New(sourceProvider SourceProvider, repoFilter *structures.Filter, codeDir string, interact interactpkg.Interactish, skipSourcePrep bool, db *database.Database, log logrus.FieldLogger) *Code {
     return &Code{
         sourceProvider: sourceProvider,
+        repoFilter:     repoFilter,
         codeDir:        codeDir,
         interact:       interact,
+        skipSourcePrep: skipSourcePrep,
         db:             db,
         log:            log,
     }
 }
 
 func (c *Code) PrepareCode() (err error) {
-    if c.db.TableExists(database.RepoTable) {
-        err = errors.New("one or more code tables already exist, cannot prepare code")
+    c.log.Info("preparing repos ... ")
+
+    if c.skipSourcePrep {
+        c.log.Debug("skipping source prep ... ")
         return
     }
 
     var repoInfos []*RepoInfo
-    repoInfos, err = c.sourceProvider.GetRepositories()
+    repoInfos, err = c.getRepoInfos()
     if err != nil {
-        err = errors.WithMessagev(err, "unable to get repositories")
+        err = errors.WithMessage(err, "unable to get repo infos")
         return
     }
+
     sort.Slice(repoInfos, func(i, j int) bool {
         return strings.ToLower(repoInfos[i].FullName) < strings.ToLower(repoInfos[j].FullName)
     })
@@ -69,6 +80,7 @@ func (c *Code) PrepareCode() (err error) {
         p.Add(worker{
             repoInfo: repoInfo,
             cloneDir: cloneDir,
+            git:      gitpkg.New(c.log),
             prog:     prog,
             db:       c.db,
             log:      log,
@@ -76,6 +88,74 @@ func (c *Code) PrepareCode() (err error) {
     }
 
     p.Close()
+    if prog != nil {
+        prog.Wait()
+    }
 
+    return
+}
+
+func (c *Code) getRepoInfos() (result []*RepoInfo, err error) {
+    // If the filter matches the existing list of repos in the database, we'll just proceed
+    if c.db.TableExists(database.RepoTable) && c.repoFilter.CanProvideExactValues() {
+
+        // Build repo infos from database repos
+        var repoInfos []*RepoInfo
+        var repoNames structures.Set
+        repoInfos, repoNames, err = c.getFilteredRepoInfosFromDatabase()
+        if err != nil {
+            err = errors.WithMessage(err, "unable to get repo infos from database")
+            return
+        }
+
+        // See if the filtered list equals the filter provided exactly
+        if c.repoFilter.ExactValues().EqualsAfterBothSorted(repoNames) {
+            c.log.Debug("using repo information from database since it contains all repos from the filter, skipping source provider")
+            result = repoInfos
+        }
+
+        // Not we have repo data in memory so delete the repo table. the worker class will save the correct list again
+        c.log.Debug("deleting repo table")
+        if err = c.db.DeleteTableIfExists(database.RepoTable); err != nil {
+            return
+        }
+    }
+
+    // Get repo infos from source provider if we haven't already gotten the repo list from the database
+    if result == nil {
+        c.interact.SpinWhile("querying source provider for repo info", func() {
+            c.log.Debug("querying source provider for repo info")
+            result, err = c.sourceProvider.GetRepositories()
+        })
+    }
+
+    return
+}
+
+func (c *Code) getFilteredRepoInfosFromDatabase() (result []*RepoInfo, repoNames structures.Set, err error) {
+    var dbRepos []*database.Repo
+    dbRepos, err = c.db.GetRepos()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repo infos from database")
+        return
+    }
+
+    repoNames = structures.NewSet(nil)
+    for _, dbRepo := range dbRepos {
+        if !c.repoFilter.IsIncluded(dbRepo.Name) {
+            continue
+        }
+
+        result = append(result, &RepoInfo{
+            Name:           dbRepo.Name,
+            SourceProvider: c.sourceProvider.GetName(),
+            FullName:       dbRepo.FullName,
+            Owner:          dbRepo.Owner,
+            SSHURL:         dbRepo.RemoteURL,
+            HTMLURL:        dbRepo.HTMLURL,
+        })
+
+        repoNames.Add(dbRepo.Name)
+    }
     return
 }

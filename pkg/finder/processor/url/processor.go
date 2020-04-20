@@ -1,9 +1,10 @@
-package processor
+package url
 
 import (
     "github.com/pantheon-systems/search-secrets/pkg/entropy"
     "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/finder/rule"
+    "github.com/pantheon-systems/search-secrets/pkg/finder"
+    "github.com/pantheon-systems/search-secrets/pkg/git"
     "github.com/pantheon-systems/search-secrets/pkg/structures"
     "github.com/sirupsen/logrus"
     urlpkg "net/url"
@@ -23,6 +24,7 @@ var (
 
     skipURLStringRes = structures.NewRegexpSetFromStringsMustCompile([]string{
         `^-`,
+        `^\w+_\w+:`, // "run_local:site_uuid="
     })
 
     // TODO: url.Parse chokes on "http://username:{PASS}@..." template variables so maybe use this somehow
@@ -36,23 +38,29 @@ var (
     })
 )
 
-type URLProcessor struct {
+type Processor struct {
+    name             string
     whitelistCodeRes *structures.RegexpSet
 }
 
-func NewURLProcessor(whitelistCodeRes *structures.RegexpSet) (result *URLProcessor) {
-    result = &URLProcessor{
+func NewProcessor(name string, whitelistCodeRes *structures.RegexpSet) (result *Processor) {
+    result = &Processor{
+        name:             name,
         whitelistCodeRes: whitelistCodeRes,
     }
 
     return
 }
 
-func (p *URLProcessor) FindInFileChange(*rule.FileChangeContext, *logrus.Entry) (result []*rule.FileChangeFinding, ignore []*structures.FileRange, err error) {
+func (p *Processor) Name() string {
+    return p.name
+}
+
+func (p *Processor) FindInFileChange(*git.FileChange, *git.Commit, logrus.FieldLogger) (result []*finder.ProcFinding, ignore []*structures.FileRange, err error) {
     return
 }
 
-func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rule.LineFinding, ignore []*structures.LineRange, err error) {
+func (p *Processor) FindInLine(line string, log logrus.FieldLogger) (result []*finder.ProcFindingInLine, ignore []*structures.LineRange, err error) {
     indexPairs := findPossibleURLsInStringRe.FindAllStringIndex(line, -1)
 
     for _, pair := range indexPairs {
@@ -66,7 +74,8 @@ func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rul
         // Parse URL
         url, parseErr := urlpkg.Parse(urlString)
         if parseErr != nil {
-            errors.ErrorLogForEntry(log, parseErr).Error("regex matched URL but url.Parse() could not, dropping match")
+            // If the URL parser can't figure it out, it might have template variables or something.
+            // In any case, we can probably ignore it.
             continue
         }
 
@@ -75,7 +84,7 @@ func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rul
 
         secrets, findErr := p.findSecretsInURL(url, urlString, lineRange.StartIndex, log)
         if findErr != nil {
-            errors.ErrorLogForEntry(log, findErr).Error("unable to find secrets in URL, dropping match")
+            errors.ErrLog(log, findErr).Error("unable to find secrets in URL, dropping match")
             continue
         }
         if secrets == nil {
@@ -89,9 +98,9 @@ func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rul
         }
 
         for _, secret := range secrets {
-            result = append(result, &rule.LineFinding{
+            result = append(result, &finder.ProcFindingInLine{
                 LineRange: secret.LineRange,
-                Secrets:   []*rule.Secret{{Value: secret.Value}},
+                Secret:    &finder.ProcSecret{Value: secret.Value},
             })
         }
     }
@@ -99,11 +108,12 @@ func (p *URLProcessor) FindInLine(line string, log *logrus.Entry) (result []*rul
     return
 }
 
-func (p *URLProcessor) findSecretsInURL(url *urlpkg.URL, urlString string, urlStartIndex int, log *logrus.Entry) (result []*structures.LineRangeValue, err error) {
+func (p *Processor) findSecretsInURL(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue, err error) {
     // Check password in URL
     var password *structures.LineRangeValue
     password, err = p.findPasswordInURL(url, urlString, urlStartIndex)
     if err != nil {
+        err = errors.WithMessagev(err, "unable to find password in URL", urlString)
         return
     }
     if password != nil {
@@ -111,7 +121,7 @@ func (p *URLProcessor) findSecretsInURL(url *urlpkg.URL, urlString string, urlSt
     }
 
     // Find high entropy in path
-    highEntropyWords := p.findHighEntropyWordsInURLPath(url.Path, urlString, urlStartIndex, log)
+    highEntropyWords := p.findHighEntropyWordsInURLPath(url, urlString, urlStartIndex, log)
     if highEntropyWords != nil {
         result = append(result, highEntropyWords...)
     }
@@ -119,7 +129,7 @@ func (p *URLProcessor) findSecretsInURL(url *urlpkg.URL, urlString string, urlSt
     return
 }
 
-func (p *URLProcessor) filterWhitelistedSecrets(line string, secrets []*structures.LineRangeValue) (result []*structures.LineRangeValue) {
+func (p *Processor) filterWhitelistedSecrets(line string, secrets []*structures.LineRangeValue) (result []*structures.LineRangeValue) {
     for _, secret := range secrets {
         if p.isSecretWhitelisted(line, secret) {
             continue
@@ -130,7 +140,7 @@ func (p *URLProcessor) filterWhitelistedSecrets(line string, secrets []*structur
     return
 }
 
-func (p *URLProcessor) findPasswordInURL(url *urlpkg.URL, urlString string, urlStartIndex int) (result *structures.LineRangeValue, err error) {
+func (p *Processor) findPasswordInURL(url *urlpkg.URL, urlString string, urlStartIndex int) (result *structures.LineRangeValue, err error) {
     if url.User == nil {
         return
     }
@@ -158,18 +168,19 @@ func (p *URLProcessor) findPasswordInURL(url *urlpkg.URL, urlString string, urlS
     return
 }
 
-func (p *URLProcessor) findHighEntropyWordsInURLPath(urlPath string, urlString string, urlStartIndex int, log *logrus.Entry) (result []*structures.LineRangeValue) {
-    if len(urlPath) < 5 {
+func (p *Processor) findHighEntropyWordsInURLPath(url *urlpkg.URL, urlString string, urlStartIndex int, log logrus.FieldLogger) (result []*structures.LineRangeValue) {
+    escapedPath := url.EscapedPath()
+    if len(escapedPath) < 5 {
         return
     }
 
-    pathPieces := strings.Split(urlPath, "/")
+    pathPieces := strings.Split(escapedPath, "/")
     pathPiecesLen := len(pathPieces)
 
-    pathStartIndex := strings.Index(urlString, urlPath)
+    pathStartIndex := strings.Index(urlString, escapedPath)
     if pathStartIndex == -1 {
-        log.WithField("urlString", urlString).WithField("urlPath", urlPath).
-            Error("url.URL has a path but we can't find it in the original URL string")
+        log.WithField("urlString", urlString).WithField("urlPath", escapedPath).
+            Warn("url.URL has a path but we can't find it in the original URL string")
         return
     }
 
@@ -193,7 +204,7 @@ func (p *URLProcessor) findHighEntropyWordsInURLPath(urlPath string, urlString s
     return
 }
 
-func (p *URLProcessor) isURLPathPieceHighEntropy(pathPiece string, log *logrus.Entry) (result bool) {
+func (p *Processor) isURLPathPieceHighEntropy(pathPiece string, log logrus.FieldLogger) (result bool) {
     pathPieceLen := len(pathPiece)
 
     if pathPieceLen == 0 || pathPieceLen < secretInPathLengthThreshold {
@@ -202,7 +213,7 @@ func (p *URLProcessor) isURLPathPieceHighEntropy(pathPiece string, log *logrus.E
 
     hasEntropy, err := entropy.HasHighEntropy(pathPiece, entropy.Base64CharsetName, secretInPathEntropyThreshold)
     if err != nil {
-        errors.ErrorLogForEntry(log, err).Error("unable to evaluate path piece for high entropy")
+        errors.ErrLog(log, err).Error("unable to evaluate path piece for high entropy")
         return
     }
 
@@ -211,6 +222,6 @@ func (p *URLProcessor) isURLPathPieceHighEntropy(pathPiece string, log *logrus.E
     return
 }
 
-func (p *URLProcessor) isSecretWhitelisted(line string, secret *structures.LineRangeValue) bool {
-    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(line, secret.LineRange)
+func (p *Processor) isSecretWhitelisted(input string, secret *structures.LineRangeValue) bool {
+    return p.whitelistCodeRes != nil && p.whitelistCodeRes.MatchAndTestSubmatchOrOverlap(input, secret.LineRange)
 }

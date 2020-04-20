@@ -1,6 +1,7 @@
 package structures
 
 import (
+    "github.com/pantheon-systems/search-secrets/pkg/errors"
     "regexp"
 )
 
@@ -20,6 +21,7 @@ func NewRegexpSetFromStrings(values []string) (result RegexpSet, err error) {
         var re *regexp.Regexp
         re, err = regexp.Compile(value)
         if err != nil {
+            err = errors.Wrapv(err, "unable to parse regex string", value)
             return
         }
 
@@ -61,8 +63,8 @@ func (r RegexpSet) MatchAny(input string) (result bool) {
     return false
 }
 
-// FOXME This doesn't belong here, it's too specific to this app
-func (r RegexpSet) MatchAndTestSubmatchOrOverlap(input string, lineRangeToMatch *LineRange) (result bool) {
+// FIXME This doesn't belong here, it's too specific to this app
+func (r RegexpSet) MatchAndTestSubmatchOrOverlap(input string, rangeToMatch *LineRange) (result bool) {
     for _, re := range r {
         matches := re.FindAllStringSubmatchIndex(input, -1)
 
@@ -72,7 +74,7 @@ func (r RegexpSet) MatchAndTestSubmatchOrOverlap(input string, lineRangeToMatch 
             // If there's a backreference, it's location should match the provided location
             if len(match) > 2 {
                 backrefLineRange := NewLineRange(match[2], match[3])
-                if backrefLineRange.Equals(lineRangeToMatch) {
+                if backrefLineRange.Equals(rangeToMatch) {
                     return true
                 }
 
@@ -80,7 +82,7 @@ func (r RegexpSet) MatchAndTestSubmatchOrOverlap(input string, lineRangeToMatch 
             }
 
             // If no backreference but the match overlaps, return true
-            if matchLineRange.Overlaps(lineRangeToMatch) {
+            if matchLineRange.Overlaps(rangeToMatch) {
                 return true
             }
         }

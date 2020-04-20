@@ -15,9 +15,11 @@ func (d *Database) GetRepo(id string) (result *Repo, err error) {
     return
 }
 
-func (d *Database) GetRepos() (result []*Repo, err error) {
-    lines, err := d.readAll(RepoTable)
+func (d *Database) GetRepos() (result Repos, err error) {
+    var lines []string
+    lines, err = d.readAll(RepoTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos")
         return
     }
 
@@ -32,10 +34,11 @@ func (d *Database) GetRepos() (result []*Repo, err error) {
     return
 }
 
-func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Repo, err error) {
-    var repos []*Repo
+func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result Repos, err error) {
+    var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repos")
         return
     }
 
@@ -48,32 +51,35 @@ func (d *Database) GetReposFiltered(repoFilter *structures.Filter) (result []*Re
     return
 }
 
-func (d *Database) GetReposSorted() (result []*Repo, err error) {
+func (d *Database) GetReposSorted() (result Repos, err error) {
     result, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos")
         return
     }
 
-    d.sortRepos(result)
+    d.SortRepos(result)
 
     return
 }
 
-func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result []*Repo, err error) {
+func (d *Database) GetReposFilteredSorted(repoFilter *structures.Filter) (result Repos, err error) {
     result, err = d.GetReposFiltered(repoFilter)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get filtered repos")
         return
     }
 
-    d.sortRepos(result)
+    d.SortRepos(result)
 
     return
 }
 
 func (d *Database) GetRepoByName(name string) (result *Repo, err error) {
-    var repos []*Repo
+    var repos Repos
     repos, err = d.GetRepos()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get repos by name")
         return
     }
 
@@ -97,10 +103,8 @@ func (d *Database) DeleteRepo(id string) (err error) {
     return
 }
 
-func (d *Database) sortRepos(objs []*Repo) {
-    sort.Slice(objs, func(i, j int) bool {
-        return strings.ToLower(objs[i].Name) < strings.ToLower(objs[j].Name)
-    })
+func (d *Database) SortRepos(objs Repos) {
+    sort.Slice(objs, func(i, j int) bool { return strings.ToLower(objs[i].Name) < strings.ToLower(objs[j].Name) })
 }
 
 // Commit
@@ -110,9 +114,11 @@ func (d *Database) GetCommit(id string) (result *Commit, err error) {
     return
 }
 
-func (d *Database) GetCommits() (result []*Commit, err error) {
-    lines, err := d.readAll(CommitTable)
+func (d *Database) GetCommits() (result Commits, err error) {
+    var lines []string
+    lines, err = d.readAll(CommitTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commits")
         return
     }
 
@@ -128,17 +134,24 @@ func (d *Database) GetCommits() (result []*Commit, err error) {
     return
 }
 
-func (d *Database) WriteCommitIfNotExists(obj *Commit) (err error) {
-    var exists bool
-    exists, err = d.exists(CommitTable, obj.ID)
+func (d *Database) GetCommitsSortedByDate() (result Commits, err error) {
+    result, err = d.GetCommits()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get commits sorted by date")
         return
     }
 
-    if !exists {
-        err = d.write(CommitTable, obj.ID, obj)
-    }
+    d.SortCommitsByDate(result)
 
+    return
+}
+
+func (d *Database) SortCommitsByDate(objs Commits) {
+    sort.Slice(objs, func(i, j int) bool { return objs[i].Date.Before(objs[j].Date) })
+}
+
+func (d *Database) WriteCommitIfNotExists(obj *Commit) (created bool, err error) {
+    created, err = d.writeIfNotExists(CommitTable, obj.ID, obj)
     return
 }
 
@@ -149,9 +162,11 @@ func (d *Database) GetFinding(id string) (result *Finding, err error) {
     return
 }
 
-func (d *Database) GetFindings() (result []*Finding, err error) {
-    lines, err := d.readAll(FindingTable)
+func (d *Database) GetFindings() (result Findings, err error) {
+    var lines []string
+    lines, err = d.readAll(FindingTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to read all findings")
         return
     }
 
@@ -172,6 +187,104 @@ func (d *Database) WriteFinding(obj *Finding) (err error) {
     return
 }
 
+func (d *Database) GetFindingsWithIDIndex() (result map[string]*Finding, err error) {
+    var objs Findings
+    objs, err = d.GetFindings()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
+        return
+    }
+
+    result = map[string]*Finding{}
+    for _, obj := range objs {
+        result[obj.ID] = obj
+    }
+
+    return
+}
+
+func (d *Database) GetFindingsSortedGroupedBySecretID() (result FindingGroups, err error) {
+    var objs Findings
+    objs, err = d.GetFindings()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get findings")
+        return
+    }
+
+    result = make(FindingGroups)
+
+    for _, obj := range objs {
+        result[obj.SecretID] = append(result[obj.SecretID], obj)
+    }
+
+    return
+}
+
+// Finding extras
+
+func (d *Database) GetFindingExtra(id string) (result *FindingExtra, err error) {
+    err = d.read(FindingExtrasTable, id, &result)
+    return
+}
+
+func (d *Database) GetFindingExtras() (result FindingExtras, err error) {
+    var lines []string
+    lines, err = d.readAll(FindingExtrasTable)
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
+        return
+    }
+
+    for _, line := range lines {
+        var obj *FindingExtra
+        if err = json.Unmarshal([]byte(line), &obj); err != nil {
+            return
+        }
+
+        result = append(result, obj)
+    }
+
+    return
+}
+
+func (d *Database) GetFindingExtrasSorted() (result FindingExtras, err error) {
+    result, err = d.GetFindingExtras()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get finding extras")
+        return
+    }
+
+    d.SortFindingExtras(result)
+
+    return
+}
+
+func (d *Database) SortFindingExtras(objs FindingExtras) {
+    sort.Slice(objs, func(i, j int) bool { return objs[i].Order < objs[j].Order })
+}
+
+func (d *Database) WriteFindingExtra(obj *FindingExtra) (err error) {
+    err = d.write(FindingExtrasTable, obj.ID, obj)
+    return
+}
+
+func (d *Database) GetFindingExtrasSortedGroupedByFindingID() (result FindingExtraGroups, err error) {
+    var objs FindingExtras
+    objs, err = d.GetFindingExtrasSorted()
+    if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted finding extras")
+        return
+    }
+
+    result = make(FindingExtraGroups)
+
+    for _, obj := range objs {
+        result[obj.FindingID] = append(result[obj.FindingID], obj)
+    }
+
+    return
+}
+
 // Secret
 
 func (d *Database) GetSecret(id string) (result *Secret, err error) {
@@ -179,9 +292,11 @@ func (d *Database) GetSecret(id string) (result *Secret, err error) {
     return
 }
 
-func (d *Database) GetSecrets() (result []*Secret, err error) {
-    lines, err := d.readAll(SecretTable)
+func (d *Database) GetSecrets() (result Secrets, err error) {
+    var lines []string
+    lines, err = d.readAll(SecretTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to read all secrets")
         return
     }
 
@@ -197,9 +312,10 @@ func (d *Database) GetSecrets() (result []*Secret, err error) {
     return
 }
 
-func (d *Database) GetSecretsSorted() (result []*Secret, err error) {
+func (d *Database) GetSecretsSorted() (result Secrets, err error) {
     result, err = d.GetSecrets()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secrets")
         return
     }
 
@@ -208,18 +324,19 @@ func (d *Database) GetSecretsSorted() (result []*Secret, err error) {
     return
 }
 
-func (d *Database) SortSecrets(objs []*Secret) {
+func (d *Database) SortSecrets(objs Secrets) {
     sort.Slice(objs, func(i, j int) bool { return objs[i].ID < objs[j].ID })
 }
 
-func (d *Database) GetSecretsWithIDIndex() (result map[string]*Secret, err error) {
-    var secrets []*Secret
+func (d *Database) GetSecretsSortedIndexed() (result SecretIndex, err error) {
+    var secrets Secrets
     secrets, err = d.GetSecretsSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted secrets")
         return
     }
 
-    result = map[string]*Secret{}
+    result = SecretIndex{}
     for _, secret := range secrets {
         result[secret.ID] = secret
     }
@@ -232,75 +349,91 @@ func (d *Database) WriteSecret(obj *Secret) (err error) {
     return
 }
 
-func (d *Database) WriteSecretIfNotExists(obj *Secret) (err error) {
-    var exists bool
-    exists, err = d.exists(SecretTable, obj.ID)
-    if err != nil {
-        return
-    }
-
-    if !exists {
-        err = d.write(SecretTable, obj.ID, obj)
-    }
-
+func (d *Database) WriteSecretIfNotExists(obj *Secret) (created bool, err error) {
+    created, err = d.writeIfNotExists(SecretTable, obj.ID, obj)
     return
 }
 
-// SecretFinding
+// Secret extras
 
-func (d *Database) GetSecretFinding(id string) (result *SecretFinding, err error) {
-    if err = d.read(SecretFindingTable, id, &result); err != nil {
-        return
-    }
-
+func (d *Database) GetSecretExtra(id string) (result *SecretExtra, err error) {
+    err = d.read(SecretExtrasTable, id, &result)
     return
 }
 
-func (d *Database) GetSecretFindings() (result []*SecretFinding, err error) {
-    lines, err := d.readAll(SecretFindingTable)
+func (d *Database) GetSecretExtras() (result SecretExtras, err error) {
+    var lines []string
+    lines, err = d.readAll(SecretExtrasTable)
     if err != nil {
+        err = errors.WithMessage(err, "unable to get secret extras")
         return
     }
 
     for _, line := range lines {
-        var obj *SecretFinding
+        var obj *SecretExtra
         if err = json.Unmarshal([]byte(line), &obj); err != nil {
             return
         }
+
         result = append(result, obj)
     }
 
     return
 }
 
-func (d *Database) GetSecretFindingsGroupedBySecret() (result map[*Secret][]*SecretFinding, err error) {
-    var secretIndex map[string]*Secret
-    secretIndex, err = d.GetSecretsWithIDIndex()
+func (d *Database) GetSecretExtrasSorted() (result SecretExtras, err error) {
+    result, err = d.GetSecretExtras()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted secret extras")
         return
     }
 
-    var sfs []*SecretFinding
-    sfs, err = d.GetSecretFindings()
+    d.SortSecretExtras(result)
+
+    return
+}
+
+func (d *Database) SortSecretExtras(objs SecretExtras) {
+    sort.Slice(objs, func(i, j int) bool {
+        return objs[i].Order < objs[j].Order
+    })
+}
+
+func (d *Database) WriteSecretExtra(obj *SecretExtra) (err error) {
+    err = d.write(SecretExtrasTable, obj.ID, obj)
+    return
+}
+
+func (d *Database) GetSecretExtrasSortedGroupedBySecretID() (result SecretExtraGroups, err error) {
+    var objs SecretExtras
+    objs, err = d.GetSecretExtrasSorted()
     if err != nil {
+        err = errors.WithMessage(err, "unable to get sorted, grouped secret extras")
         return
     }
 
-    result = make(map[*Secret][]*SecretFinding)
+    result = make(SecretExtraGroups)
 
-    for _, sf := range sfs {
-        secret, ok := secretIndex[sf.SecretID]
-        if !ok {
-            err = errors.Errorv("no secret found for secret ID", sf.SecretID)
-            return
-        }
-        result[secret] = append(result[secret], sf)
+    for _, obj := range objs {
+        result[obj.SecretID] = append(result[obj.SecretID], obj)
     }
 
     return
 }
 
-func (d *Database) WriteSecretFinding(obj *SecretFinding) (err error) {
-    err = d.write(SecretFindingTable, obj.ID, obj)
+// RepoCommitsCache
+
+func (d *Database) GetRepoCommitsCache(id string) (result *RepoCommitsCache, err error) {
+    err = d.read(RepoCommitsCacheTable, id, &result)
+    return
+}
+
+func (d *Database) WriteRepoCommitsCache(obj *RepoCommitsCache) (err error) {
+    err = d.write(RepoCommitsCacheTable, obj.RepoName, obj)
+    return
+}
+
+func (d *Database) DeleteRepoCommitsCache(id string) (err error) {
+    err = d.delete(RepoCommitsCacheTable, id)
     return
 }

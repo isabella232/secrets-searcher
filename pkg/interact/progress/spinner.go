@@ -12,8 +12,8 @@ type Spinner struct {
     unitPlural string
 }
 
-func NewSpinner(progress *Progress, barName string) (result *Spinner) {
-    uiBar := progress.uiProgress.AddSpinner(int64(1), mpb.SpinnerOnMiddle,
+func newSpinner(progress *Progress, barName string) (result *Spinner) {
+    uiBar := progress.uiProgress.AddSpinner(int64(1), mpb.SpinnerOnLeft,
         mpb.BarNoPop(),
         mpb.BarRemoveOnComplete(),
         mpb.PrependDecorators(
