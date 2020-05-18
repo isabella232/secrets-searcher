@@ -1,0 +1,5 @@
+---
+search:
+  processors:
+    - name: slack-token
+      processor: regex

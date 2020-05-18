@@ -27,7 +27,7 @@ func template_reportTemplate() string {
 		"    <table class=\"table report-info\">\n" +
 		"        <tr>\n" +
 		"            <th scope=\"row\">Secrets found</th>\n" +
-		"            <td>{{ len .Secrets}}</td>\n" +
+		"            <td>{{.SecretCountMsg}}</td>\n" +
 		"        </tr>\n" +
 		"        <tr>\n" +
 		"            <th scope=\"row\">Completed</th>\n" +
@@ -45,99 +45,40 @@ func template_reportTemplate() string {
 		"\n" +
 		"    {{if not .Secrets}}\n" +
 		"        <p>No secrets were found.</p>\n" +
-		"    {{end}}\n" +
+		"    {{else}}\n" +
+		"        <div class=\"container-fluid\">\n" +
+		"            <p>\n" +
+		"                <a href=\"javascript:\" class=\"expand-all\">Expand all</a> /\n" +
+		"                <a href=\"javascript:\" class=\"collapse-all\">Collapse all</a>\n" +
+		"            </p>\n" +
+		"            {{$defaultGroup:=.DefaultGroup}}\n" +
+		"            {{range $groupName, $secrets := .Secrets}}\n" +
 		"\n" +
-		"    {{range $, $secret := .Secrets}}\n" +
-		"        <div class=\"secret\">\n" +
-		"            <h3>Secret {{$secret.ID}}</h3>\n" +
-		"\n" +
-		"            <div class=\"secret-value\">\n" +
-		"                <pre><code>{{$secret.Value}}</code></pre>\n" +
-		"            </div>\n" +
-		"\n" +
-		"            {{if $secret.Extras}}\n" +
-		"                <table class=\"table table-sm details\">\n" +
-		"                    {{range $, $extra := $secret.Extras}}\n" +
-		"                        <tr>\n" +
-		"                            <th scope=\"row\">{{$extra.Header}}</th>\n" +
-		"                            <td>{{template \"extra\" $extra}}</td>\n" +
-		"                        </tr>\n" +
+		"                {{if eq $groupName $defaultGroup }}\n" +
+		"                    {{range $, $secret := $secrets}}\n" +
+		"                        {{template \"secret-rows\" $secret}}\n" +
 		"                    {{end}}\n" +
-		"                </table>\n" +
-		"            {{end}}\n" +
+		"                {{else}}\n" +
+		"                    <div class=\"group expander row\">\n" +
+		"                        <div class=\"col\">\n" +
+		"                            <a href=\"javascript:\" class=\"float-left expander-link material-icons\"></a>\n" +
+		"                            {{$groupName}}\n" +
+		"                            ({{ len $secrets }} secrets)\n" +
+		"                        </div>\n" +
+		"                    </div>\n" +
 		"\n" +
-		"            <table class=\"table table-sm findings\">\n" +
-		"                <tr>\n" +
-		"                    <th scope=\"col\" class=\"expander-col\"></th>\n" +
-		"                    <th scope=\"col\">Processor</th>\n" +
-		"                    <th scope=\"col\">Repo</th>\n" +
-		"                    <th scope=\"col\">Commit</th>\n" +
-		"                    <th scope=\"col\">Date</th>\n" +
-		"                    <th scope=\"col\">File/Line</th>\n" +
-		"                    <th scope=\"col\">Author</th>\n" +
-		"                </tr>\n" +
-		"                {{range $, $finding := $secret.Findings}}\n" +
-		"                    <tr class=\"finding\">\n" +
-		"                        <td class=\"expander\">\n" +
-		"                            <a href=\"javascript:\" class=\"material-icons\"></a>\n" +
-		"                        </td>\n" +
-		"                        <td>{{$finding.ProcessorName}}</td>\n" +
-		"                        <td>{{template \"link\" $finding.RepoFullLink}}</td>\n" +
-		"                        <td>{{template \"link\" $finding.CommitHashLinkShort}}</td>\n" +
-		"                        <td>{{template \"link\" $finding.FileLineLinkShort}}</td>\n" +
-		"                        <td>{{$finding.CommitDate.Format \"01/02/2006\"}}</td>\n" +
-		"                        <td>{{$finding.CommitAuthorEmail}}</td>\n" +
-		"                    </tr>\n" +
-		"                    <tr class=\"finding-full collapsed\">\n" +
-		"                        <td class=\"expander-col\"></td>\n" +
-		"                        <td colspan=\"6\">\n" +
-		"                            <table class=\"table table-sm details\">\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Processor</th>\n" +
-		"                                    <td>{{$finding.ProcessorName}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Repo</th>\n" +
-		"                                    <td>{{template \"link\" $finding.RepoFullLink}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Commit</th>\n" +
-		"                                    <td>{{template \"link\" $finding.CommitHashLink}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Date</th>\n" +
-		"                                    <td>{{$finding.CommitDate.Format \"01/02/2006 15:04:05\"}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">File</th>\n" +
-		"                                    <td>{{template \"link\" $finding.FileLineLink}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Author</th>\n" +
-		"                                    <td>{{$finding.CommitAuthorFull}}</td>\n" +
-		"                                </tr>\n" +
-		"                                <tr>\n" +
-		"                                    <th scope=\"row\">Code</th>\n" +
-		"                                    <td>\n" +
-		"                                        <pre><code>{{ $finding.CodeTrimmed }}</code></pre>\n" +
-		"                                    </td>\n" +
-		"                                </tr>\n" +
-		"                                {{range $, $extra := $finding.Extras}}\n" +
-		"                                    <tr>\n" +
-		"                                        <th scope=\"row\">{{$extra.Header}}</th>\n" +
-		"                                        <td>{{template \"extra\" $extra}}</td>\n" +
-		"                                    </tr>\n" +
-		"                                {{end}}\n" +
-		"                            </table>\n" +
-		"                        </td>\n" +
-		"                    </tr>\n" +
+		"                    <div class=\"expander-target\">\n" +
+		"                        {{range $, $secret := $secrets}}\n" +
+		"                            {{template \"secret-rows\" $secret}}\n" +
+		"                        {{end}}\n" +
+		"                    </div>\n" +
 		"                {{end}}\n" +
-		"            </table>\n" +
+		"            {{end}}\n" +
 		"        </div>\n" +
 		"    {{end}}\n" +
 		"</div>\n" +
 		"\n" +
-		"<p class=\"font-italic\">Report generated by {{template \"link\" .AppLink}}.</p>\n" +
+		"<p class=\"footer\">Report generated by {{template \"link\" .AppLink}}</p>\n" +
 		"\n" +
 		"<script src=\"https://code.jquery.com/jquery-3.4.1.slim.min.js\"\n" +
 		"        integrity=\"sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n\"\n" +
@@ -148,97 +89,88 @@ func template_reportTemplate() string {
 		"<script src=\"https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js\"\n" +
 		"        integrity=\"sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6\"\n" +
 		"        crossorigin=\"anonymous\"></script>\n" +
-		"<script type=\"application/javascript\">\n" +
-		"    $(function () {\n" +
-		"        $('[data-toggle=\"tooltip\"]').tooltip();\n" +
-		"\n" +
-		"        $('.finding').each(function () {\n" +
-		"            const collapsedClass = 'collapsed';\n" +
-		"            let finding = $(this);\n" +
-		"            let findingFull = $(this).next('.finding-full');\n" +
-		"            let expander = finding.find('.expander');\n" +
-		"            let expanderLink = expander.children('a');\n" +
-		"\n" +
-		"            function updateIcon() {\n" +
-		"                expanderLink[0].innerHTML = findingFull.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';\n" +
-		"            }\n" +
-		"\n" +
-		"            function toggleCollapsed() {\n" +
-		"                findingFull.toggleClass(collapsedClass);\n" +
-		"                updateIcon()\n" +
-		"            }\n" +
-		"\n" +
-		"            expanderLink.click(toggleCollapsed);\n" +
-		"            updateIcon()\n" +
-		"        })\n" +
-		"    });\n" +
-		"</script>\n" +
+		"{{template \"script\"}}\n" +
 		"</body>\n" +
 		"</html>\n" +
 		"\n" +
-		"{{define \"styles\"}}\n" +
-		"    <style>\n" +
-		"        body {\n" +
-		"            font-size: 14px;\n" +
-		"        }\n" +
-		"\n" +
-		"        pre {\n" +
-		"            padding: 15px;\n" +
-		"            background-color: #cccccc;\n" +
-		"        }\n" +
-		"\n" +
-		"        .report-info {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret {\n" +
-		"            padding-top: 30px;\n" +
-		"            margin-bottom: 50px;\n" +
-		"            border-top: 3px solid #e9e9e9;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret > h3 {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .secret-value {\n" +
-		"            margin-bottom: 30px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .details {\n" +
-		"            background-color: #e9e9e9;\n" +
-		"        }\n" +
-		"\n" +
-		"        .details pre {\n" +
-		"            margin-bottom: 0\n" +
-		"        }\n" +
-		"\n" +
-		"        .expander-col {\n" +
-		"            width: 40px;\n" +
-		"        }\n" +
-		"\n" +
-		"        .expander a:hover {\n" +
-		"            text-decoration: none;\n" +
-		"        }\n" +
-		"\n" +
-		"\n" +
-		"        .finding-full {\n" +
-		"            display: table-row;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full.collapsed {\n" +
-		"            display: none;\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full > td {\n" +
-		"            padding: 0\n" +
-		"        }\n" +
-		"\n" +
-		"        .finding-full table tr:first-child th,\n" +
-		"        .finding-full table tr:first-child td {\n" +
-		"            border-top-width: 0\n" +
-		"        }\n" +
-		"    </style>\n" +
+		"{{define \"secret-rows\"}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.secretData*/ -}}\n" +
+		"    <div class=\"secret expander row\">\n" +
+		"        <div class=\"col col-5 label\">\n" +
+		"            <a href=\"javascript:\" class=\"float-left expander-link material-icons\"></a>\n" +
+		"            Secret {{.ID}}\n" +
+		"        </div>\n" +
+		"        <div class=\"col col-7\">\n" +
+		"            <pre><code>{{ .Finding.BeforeCode }}<span\n" +
+		"                            class=\"code\">{{ .Finding.CodeNoBreaks }}</span>{{ .Finding.AfterCode }}</code></pre>\n" +
+		"        </div>\n" +
+		"    </div>\n" +
+		"    <div class=\"expander-target expander-collapsed\">\n" +
+		"        <div class=\"row\">\n" +
+		"            <div class=\"col col-2 label\">Secret value</div>\n" +
+		"            <div class=\"col col-10\">\n" +
+		"                <pre><code>{{.Value}}</code></pre>\n" +
+		"            </div>\n" +
+		"        </div>\n" +
+		"        {{range $, $extra := .Extras}}\n" +
+		"            <div class=\"row\">\n" +
+		"                <div class=\"col col-2 label\">{{$extra.Header}}</div>\n" +
+		"                <div class=\"col col-10\">{{template \"extra\" $extra}}</div>\n" +
+		"            </div>\n" +
+		"        {{end}}\n" +
+		"        {{range $, $finding := .Findings}}\n" +
+		"            <div class=\"finding expander row\">\n" +
+		"                <div class=\"col col-2 label\">\n" +
+		"                    <a href=\"javascript:\" class=\"float-left expander-link material-icons\"></a>\n" +
+		"                    Finding\n" +
+		"                </div>\n" +
+		"                <div class=\"col col-10\">\n" +
+		"                    {{$finding.CommitDate.Format \"01/02/2006\"}} /\n" +
+		"                    {{template \"link\" $finding.RepoFullLink}} /\n" +
+		"                    {{template \"link\" $finding.FileLineLink}}\n" +
+		"                </div>\n" +
+		"            </div>\n" +
+		"            <div class=\"expander-target expander-collapsed\">\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Processor</div>\n" +
+		"                    <div class=\"col col-10\">{{$finding.ProcessorName}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Repo</div>\n" +
+		"                    <div class=\"col col-10\">{{template \"link\" $finding.RepoFullLink}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Commit</div>\n" +
+		"                    <div class=\"col col-10\">{{template \"link\" $finding.CommitHashLink}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Date</div>\n" +
+		"                    <div class=\"col col-10\">{{$finding.CommitDate.Format \"01/02/2006 15:04:05\"}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">File</div>\n" +
+		"                    <div class=\"col col-10\">{{template \"link\" $finding.FileLineLink}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Author</div>\n" +
+		"                    <div class=\"col col-10\">{{$finding.CommitAuthorEmail}}</div>\n" +
+		"                </div>\n" +
+		"                <div class=\"row\">\n" +
+		"                    <div class=\"col col-2 label\">Code</div>\n" +
+		"                    <div class=\"col col-10\">\n" +
+		"                                            <pre><code>{{ $finding.BeforeCode }}<span\n" +
+		"                                                            class=\"code\">{{ $finding.Code }}</span>{{ $finding.AfterCode }}</code></pre>\n" +
+		"                    </div>\n" +
+		"                </div>\n" +
+		"                {{range $, $extra := $finding.Extras}}\n" +
+		"                    <div class=\"row\">\n" +
+		"                        <div class=\"col col-2 label\">{{$extra.Header}}</div>\n" +
+		"                        <div class=\"col col-10\">{{template \"extra\" $extra}}</div>\n" +
+		"                    </div>\n" +
+		"                {{end}}\n" +
+		"            </div>\n" +
+		"        {{end}}\n" +
+		"    </div>\n" +
 		"{{end}}\n" +
 		"\n" +
 		"{{define \"link\"}}\n" +
@@ -248,15 +180,178 @@ func template_reportTemplate() string {
 		"\n" +
 		"{{define \"extra\"}}\n" +
 		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}\n" +
-		"    <div class=\"extra extra-{{.Key}}\">\n" +
-		"        {{if .Link}}\n" +
-		"            {{template \"link\" .Link}}\n" +
-		"        {{else if .Code}}\n" +
-		"            <pre><code>{{.Value}}</code></pre>\n" +
-		"        {{else}}\n" +
-		"            {{.Value}}\n" +
-		"        {{end}}\n" +
-		"    </div>\n" +
+		"    {{if .Link}}\n" +
+		"        {{template \"link\" .Link}}\n" +
+		"    {{else if .Code}}\n" +
+		"        <pre><code>{{.Value}}</code></pre>\n" +
+		"    {{else}}\n" +
+		"        {{.Value}}\n" +
+		"    {{end}}\n" +
+		"{{end}}\n" +
+		"\n" +
+		"{{define \"script\"}}\n" +
+		"    <script type=\"application/javascript\">\n" +
+		"        $(function () {\n" +
+		"            const collapsedClass = 'expander-collapsed';\n" +
+		"\n" +
+		"            $('[data-toggle=\"tooltip\"]').tooltip();\n" +
+		"\n" +
+		"            $('.expander').each(function () {\n" +
+		"                const $expander = $(this);\n" +
+		"                const $expanderLink = $expander.find('.expander-link');\n" +
+		"                const $target = $expander.next('.expander-target');\n" +
+		"                const $children = $target.find(\".expander\").filter(function () {\n" +
+		"                    const $1 = $(this);\n" +
+		"                    const parentsUntil = $1.parentsUntil($target);\n" +
+		"                    return parentsUntil.length === 0;\n" +
+		"                });\n" +
+		"\n" +
+		"                function updateIcon() {\n" +
+		"                    $expanderLink[0].innerHTML = $target.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';\n" +
+		"                }\n" +
+		"\n" +
+		"                function collapse() {\n" +
+		"                    $target.addClass(collapsedClass);\n" +
+		"                    updateIcon()\n" +
+		"                }\n" +
+		"\n" +
+		"                function expand() {\n" +
+		"                    $target.removeClass(collapsedClass);\n" +
+		"                    updateIcon()\n" +
+		"                }\n" +
+		"\n" +
+		"                function toggle() {\n" +
+		"                    $target.toggleClass(collapsedClass);\n" +
+		"                    updateIcon()\n" +
+		"                }\n" +
+		"\n" +
+		"                function isCollapsed() {\n" +
+		"                    return $target.hasClass(collapsedClass);\n" +
+		"                }\n" +
+		"\n" +
+		"                function expandDecendants() {\n" +
+		"                    $children.trigger(\"expandAll\")\n" +
+		"                }\n" +
+		"\n" +
+		"                function collapseDecendants() {\n" +
+		"                    $children.trigger(\"collapseAll\")\n" +
+		"                }\n" +
+		"\n" +
+		"                function expandAll() {\n" +
+		"                    expand()\n" +
+		"                    expandDecendants()\n" +
+		"                }\n" +
+		"\n" +
+		"                function collapseAll() {\n" +
+		"                    collapse()\n" +
+		"                    collapseDecendants()\n" +
+		"                }\n" +
+		"\n" +
+		"                function toggleAll() {\n" +
+		"                    toggle()\n" +
+		"                    if (isCollapsed()) {\n" +
+		"                        collapseDecendants()\n" +
+		"                    } else {\n" +
+		"                        expandDecendants()\n" +
+		"                    }\n" +
+		"                }\n" +
+		"\n" +
+		"                function toggleWithFullCollapse() {\n" +
+		"                    toggle()\n" +
+		"                    if (isCollapsed()) {\n" +
+		"                        collapseDecendants()\n" +
+		"                    } else {\n" +
+		"                        expand()\n" +
+		"                    }\n" +
+		"                }\n" +
+		"\n" +
+		"                $expander.on(\"collapse\", collapse);\n" +
+		"                $expander.on(\"expand\", expand);\n" +
+		"                $expander.on(\"collapseAll\", collapseAll);\n" +
+		"                $expander.on(\"expandAll\", expandAll);\n" +
+		"\n" +
+		"                $expanderLink.on(\"click\", function (evt) {\n" +
+		"                    if (evt.altKey) {\n" +
+		"                        toggleAll();\n" +
+		"                    } else {\n" +
+		"                        toggleWithFullCollapse();\n" +
+		"                    }\n" +
+		"                });\n" +
+		"\n" +
+		"                updateIcon()\n" +
+		"            })\n" +
+		"        });\n" +
+		"\n" +
+		"        $('.expand-all').on(\"click\", function () {\n" +
+		"            $('.expander').trigger(\"expand\");\n" +
+		"        });\n" +
+		"        $('.collapse-all').on(\"click\", function () {\n" +
+		"            $('.expander').trigger(\"collapse\");\n" +
+		"        });\n" +
+		"    </script>\n" +
+		"{{end}}\n" +
+		"\n" +
+		"{{define \"styles\"}}\n" +
+		"    <style>\n" +
+		"        body {\n" +
+		"            font-size: 14px;\n" +
+		"        }\n" +
+		"\n" +
+		"        pre {\n" +
+		"            margin: 0;\n" +
+		"            background-color: #e9e9e9;\n" +
+		"        }\n" +
+		"\n" +
+		"        .label {\n" +
+		"            font-weight: bold;\n" +
+		"        }\n" +
+		"\n" +
+		"        .code {\n" +
+		"            text-decoration: underline dotted red;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-collapsed {\n" +
+		"            display: none;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-link:hover {\n" +
+		"            text-decoration: none;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-link {\n" +
+		"            margin-right: 11px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .row {\n" +
+		"            margin-bottom: 5px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .col > pre {\n" +
+		"            padding: 3px 5px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .report-info {\n" +
+		"            margin-bottom: 30px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-target .label {\n" +
+		"            padding-left: 50px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-target .expander-target .label {\n" +
+		"            padding-left: 85px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .expander-target .expander-target .expander-target .label {\n" +
+		"            padding-left: 120px;\n" +
+		"        }\n" +
+		"\n" +
+		"        .footer {\n" +
+		"            text-align: center;\n" +
+		"            font-style: italic;\n" +
+		"            margin-top: 20px;\n" +
+		"        }\n" +
+		"    </style>\n" +
 		"{{end}}\n" +
 		"\n" +
 		""
