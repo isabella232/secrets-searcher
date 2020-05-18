@@ -21,7 +21,7 @@ Then run:
 ```shell script
 cd _pantheon
 export SECRETS_SOURCE_API_TOKEN="[GITHUB_TOKEN]"
-../search-secrets --config="config.yaml"
+../search-secrets --config="config.yaml,config.rules.yaml"
 ```
 
 The tool will create an `./output/report` directory that includes an HTML report.
