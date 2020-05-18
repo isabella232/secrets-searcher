@@ -1,19 +1,19 @@
 package stats
 
 import (
-    "time"
+	"time"
 )
 
 var (
-    CommitsSearchedCount int64
-    SecretsFoundCount    int64
+	CommitsSearchedCount int64
+	SecretsFoundCount    int64
 
-    AppStartTime    time.Time
-    AppEndTime      time.Time
-    SearchStartTime time.Time
-    SearchEndTime   time.Time
+	AppStartTime    time.Time
+	AppEndTime      time.Time
+	SearchStartTime time.Time
+	SearchEndTime   time.Time
 
-    CodePhaseCompleted   bool
-    SearchPhaseCompleted bool
-    ReportPhaseCompleted bool
+	SourcePhaseCompleted bool
+	SearchPhaseCompleted bool
+	ReportPhaseCompleted bool
 )

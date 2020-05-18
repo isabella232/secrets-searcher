@@ -16,7 +16,7 @@
     <table class="table report-info">
         <tr>
             <th scope="row">Secrets found</th>
-            <td>{{ len .Secrets}}</td>
+            <td>{{.SecretCountMsg}}</td>
         </tr>
         <tr>
             <th scope="row">Completed</th>
@@ -34,99 +34,40 @@
 
     {{if not .Secrets}}
         <p>No secrets were found.</p>
-    {{end}}
+    {{else}}
+        <div class="container-fluid">
+            <p>
+                <a href="javascript:" class="expand-all">Expand all</a> /
+                <a href="javascript:" class="collapse-all">Collapse all</a>
+            </p>
+            {{$defaultGroup:=.DefaultGroup}}
+            {{range $groupName, $secrets := .Secrets}}
 
-    {{range $, $secret := .Secrets}}
-        <div class="secret">
-            <h3>Secret {{$secret.ID}}</h3>
-
-            <div class="secret-value">
-                <pre><code>{{$secret.Value}}</code></pre>
-            </div>
-
-            {{if $secret.Extras}}
-                <table class="table table-sm details">
-                    {{range $, $extra := $secret.Extras}}
-                        <tr>
-                            <th scope="row">{{$extra.Header}}</th>
-                            <td>{{template "extra" $extra}}</td>
-                        </tr>
+                {{if eq $groupName $defaultGroup }}
+                    {{range $, $secret := $secrets}}
+                        {{template "secret-rows" $secret}}
                     {{end}}
-                </table>
-            {{end}}
+                {{else}}
+                    <div class="group expander row">
+                        <div class="col">
+                            <a href="javascript:" class="float-left expander-link material-icons"></a>
+                            {{$groupName}}
+                            ({{ len $secrets }} secrets)
+                        </div>
+                    </div>
 
-            <table class="table table-sm findings">
-                <tr>
-                    <th scope="col" class="expander-col"></th>
-                    <th scope="col">Processor</th>
-                    <th scope="col">Repo</th>
-                    <th scope="col">Commit</th>
-                    <th scope="col">Date</th>
-                    <th scope="col">File/Line</th>
-                    <th scope="col">Author</th>
-                </tr>
-                {{range $, $finding := $secret.Findings}}
-                    <tr class="finding">
-                        <td class="expander">
-                            <a href="javascript:" class="material-icons"></a>
-                        </td>
-                        <td>{{$finding.ProcessorName}}</td>
-                        <td>{{template "link" $finding.RepoFullLink}}</td>
-                        <td>{{template "link" $finding.CommitHashLinkShort}}</td>
-                        <td>{{template "link" $finding.FileLineLinkShort}}</td>
-                        <td>{{$finding.CommitDate.Format "01/02/2006"}}</td>
-                        <td>{{$finding.CommitAuthorEmail}}</td>
-                    </tr>
-                    <tr class="finding-full collapsed">
-                        <td class="expander-col"></td>
-                        <td colspan="6">
-                            <table class="table table-sm details">
-                                <tr>
-                                    <th scope="row">Processor</th>
-                                    <td>{{$finding.ProcessorName}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Repo</th>
-                                    <td>{{template "link" $finding.RepoFullLink}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Commit</th>
-                                    <td>{{template "link" $finding.CommitHashLink}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Date</th>
-                                    <td>{{$finding.CommitDate.Format "01/02/2006 15:04:05"}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">File</th>
-                                    <td>{{template "link" $finding.FileLineLink}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Author</th>
-                                    <td>{{$finding.CommitAuthorFull}}</td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">Code</th>
-                                    <td>
-                                        <pre><code>{{ $finding.CodeTrimmed }}</code></pre>
-                                    </td>
-                                </tr>
-                                {{range $, $extra := $finding.Extras}}
-                                    <tr>
-                                        <th scope="row">{{$extra.Header}}</th>
-                                        <td>{{template "extra" $extra}}</td>
-                                    </tr>
-                                {{end}}
-                            </table>
-                        </td>
-                    </tr>
+                    <div class="expander-target">
+                        {{range $, $secret := $secrets}}
+                            {{template "secret-rows" $secret}}
+                        {{end}}
+                    </div>
                 {{end}}
-            </table>
+            {{end}}
         </div>
     {{end}}
 </div>
 
-<p class="font-italic">Report generated by {{template "link" .AppLink}}.</p>
+<p class="footer">Report generated by {{template "link" .AppLink}}</p>
 
 <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
         integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
@@ -137,97 +78,88 @@
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
         integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
         crossorigin="anonymous"></script>
-<script type="application/javascript">
-    $(function () {
-        $('[data-toggle="tooltip"]').tooltip();
-
-        $('.finding').each(function () {
-            const collapsedClass = 'collapsed';
-            let finding = $(this);
-            let findingFull = $(this).next('.finding-full');
-            let expander = finding.find('.expander');
-            let expanderLink = expander.children('a');
-
-            function updateIcon() {
-                expanderLink[0].innerHTML = findingFull.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';
-            }
-
-            function toggleCollapsed() {
-                findingFull.toggleClass(collapsedClass);
-                updateIcon()
-            }
-
-            expanderLink.click(toggleCollapsed);
-            updateIcon()
-        })
-    });
-</script>
+{{template "script"}}
 </body>
 </html>
 
-{{define "styles"}}
-    <style>
-        body {
-            font-size: 14px;
-        }
-
-        pre {
-            padding: 15px;
-            background-color: #cccccc;
-        }
-
-        .report-info {
-            margin-bottom: 30px;
-        }
-
-        .secret {
-            padding-top: 30px;
-            margin-bottom: 50px;
-            border-top: 3px solid #e9e9e9;
-        }
-
-        .secret > h3 {
-            margin-bottom: 30px;
-        }
-
-        .secret-value {
-            margin-bottom: 30px;
-        }
-
-        .details {
-            background-color: #e9e9e9;
-        }
-
-        .details pre {
-            margin-bottom: 0
-        }
-
-        .expander-col {
-            width: 40px;
-        }
-
-        .expander a:hover {
-            text-decoration: none;
-        }
-
-
-        .finding-full {
-            display: table-row;
-        }
-
-        .finding-full.collapsed {
-            display: none;
-        }
-
-        .finding-full > td {
-            padding: 0
-        }
-
-        .finding-full table tr:first-child th,
-        .finding-full table tr:first-child td {
-            border-top-width: 0
-        }
-    </style>
+{{define "secret-rows"}}
+    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.secretData*/ -}}
+    <div class="secret expander row">
+        <div class="col col-5 label">
+            <a href="javascript:" class="float-left expander-link material-icons"></a>
+            Secret {{.ID}}
+        </div>
+        <div class="col col-7">
+            <pre><code>{{ .Finding.BeforeCode }}<span
+                            class="code">{{ .Finding.CodeNoBreaks }}</span>{{ .Finding.AfterCode }}</code></pre>
+        </div>
+    </div>
+    <div class="expander-target expander-collapsed">
+        <div class="row">
+            <div class="col col-2 label">Secret value</div>
+            <div class="col col-10">
+                <pre><code>{{.Value}}</code></pre>
+            </div>
+        </div>
+        {{range $, $extra := .Extras}}
+            <div class="row">
+                <div class="col col-2 label">{{$extra.Header}}</div>
+                <div class="col col-10">{{template "extra" $extra}}</div>
+            </div>
+        {{end}}
+        {{range $, $finding := .Findings}}
+            <div class="finding expander row">
+                <div class="col col-2 label">
+                    <a href="javascript:" class="float-left expander-link material-icons"></a>
+                    Finding
+                </div>
+                <div class="col col-10">
+                    {{$finding.CommitDate.Format "01/02/2006"}} /
+                    {{template "link" $finding.RepoFullLink}} /
+                    {{template "link" $finding.FileLineLink}}
+                </div>
+            </div>
+            <div class="expander-target expander-collapsed">
+                <div class="row">
+                    <div class="col col-2 label">Processor</div>
+                    <div class="col col-10">{{$finding.ProcessorName}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">Repo</div>
+                    <div class="col col-10">{{template "link" $finding.RepoFullLink}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">Commit</div>
+                    <div class="col col-10">{{template "link" $finding.CommitHashLink}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">Date</div>
+                    <div class="col col-10">{{$finding.CommitDate.Format "01/02/2006 15:04:05"}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">File</div>
+                    <div class="col col-10">{{template "link" $finding.FileLineLink}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">Author</div>
+                    <div class="col col-10">{{$finding.CommitAuthorEmail}}</div>
+                </div>
+                <div class="row">
+                    <div class="col col-2 label">Code</div>
+                    <div class="col col-10">
+                                            <pre><code>{{ $finding.BeforeCode }}<span
+                                                            class="code">{{ $finding.Code }}</span>{{ $finding.AfterCode }}</code></pre>
+                    </div>
+                </div>
+                {{range $, $extra := $finding.Extras}}
+                    <div class="row">
+                        <div class="col col-2 label">{{$extra.Header}}</div>
+                        <div class="col col-10">{{template "extra" $extra}}</div>
+                    </div>
+                {{end}}
+            </div>
+        {{end}}
+    </div>
 {{end}}
 
 {{define "link"}}
@@ -237,14 +169,177 @@
 
 {{define "extra"}}
     {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}
-    <div class="extra extra-{{.Key}}">
-        {{if .Link}}
-            {{template "link" .Link}}
-        {{else if .Code}}
-            <pre><code>{{.Value}}</code></pre>
-        {{else}}
-            {{.Value}}
-        {{end}}
-    </div>
+    {{if .Link}}
+        {{template "link" .Link}}
+    {{else if .Code}}
+        <pre><code>{{.Value}}</code></pre>
+    {{else}}
+        {{.Value}}
+    {{end}}
+{{end}}
+
+{{define "script"}}
+    <script type="application/javascript">
+        $(function () {
+            const collapsedClass = 'expander-collapsed';
+
+            $('[data-toggle="tooltip"]').tooltip();
+
+            $('.expander').each(function () {
+                const $expander = $(this);
+                const $expanderLink = $expander.find('.expander-link');
+                const $target = $expander.next('.expander-target');
+                const $children = $target.find(".expander").filter(function () {
+                    const $1 = $(this);
+                    const parentsUntil = $1.parentsUntil($target);
+                    return parentsUntil.length === 0;
+                });
+
+                function updateIcon() {
+                    $expanderLink[0].innerHTML = $target.hasClass(collapsedClass) ? 'add_circle' : 'remove_circle';
+                }
+
+                function collapse() {
+                    $target.addClass(collapsedClass);
+                    updateIcon()
+                }
+
+                function expand() {
+                    $target.removeClass(collapsedClass);
+                    updateIcon()
+                }
+
+                function toggle() {
+                    $target.toggleClass(collapsedClass);
+                    updateIcon()
+                }
+
+                function isCollapsed() {
+                    return $target.hasClass(collapsedClass);
+                }
+
+                function expandDecendants() {
+                    $children.trigger("expandAll")
+                }
+
+                function collapseDecendants() {
+                    $children.trigger("collapseAll")
+                }
+
+                function expandAll() {
+                    expand()
+                    expandDecendants()
+                }
+
+                function collapseAll() {
+                    collapse()
+                    collapseDecendants()
+                }
+
+                function toggleAll() {
+                    toggle()
+                    if (isCollapsed()) {
+                        collapseDecendants()
+                    } else {
+                        expandDecendants()
+                    }
+                }
+
+                function toggleWithFullCollapse() {
+                    toggle()
+                    if (isCollapsed()) {
+                        collapseDecendants()
+                    } else {
+                        expand()
+                    }
+                }
+
+                $expander.on("collapse", collapse);
+                $expander.on("expand", expand);
+                $expander.on("collapseAll", collapseAll);
+                $expander.on("expandAll", expandAll);
+
+                $expanderLink.on("click", function (evt) {
+                    if (evt.altKey) {
+                        toggleAll();
+                    } else {
+                        toggleWithFullCollapse();
+                    }
+                });
+
+                updateIcon()
+            })
+        });
+
+        $('.expand-all').on("click", function () {
+            $('.expander').trigger("expand");
+        });
+        $('.collapse-all').on("click", function () {
+            $('.expander').trigger("collapse");
+        });
+    </script>
+{{end}}
+
+{{define "styles"}}
+    <style>
+        body {
+            font-size: 14px;
+        }
+
+        pre {
+            margin: 0;
+            background-color: #e9e9e9;
+        }
+
+        .label {
+            font-weight: bold;
+        }
+
+        .code {
+            text-decoration: underline dotted red;
+        }
+
+        .expander-collapsed {
+            display: none;
+        }
+
+        .expander-link:hover {
+            text-decoration: none;
+        }
+
+        .expander-link {
+            margin-right: 11px;
+        }
+
+        .row {
+            margin-bottom: 5px;
+        }
+
+        .col > pre {
+            padding: 3px 5px;
+        }
+
+        .report-info {
+            margin-bottom: 30px;
+        }
+
+        .expander-target .label {
+            padding-left: 50px;
+        }
+
+        .expander-target .expander-target .label {
+            padding-left: 85px;
+        }
+
+        .expander-target .expander-target .expander-target .label {
+            padding-left: 120px;
+        }
+
+        .footer {
+            text-align: center;
+            font-style: italic;
+            margin-top: 20px;
+        }
+    </style>
 {{end}}
 

@@ -1,221 +1,176 @@
 package git
 
 import (
-    "bytes"
-    diffpkg "github.com/pantheon-systems/search-secrets/pkg/diff"
-    "github.com/pantheon-systems/search-secrets/pkg/errors"
-    "github.com/pantheon-systems/search-secrets/pkg/git/diff_operation"
-    gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
-    gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
-    "strings"
+	"strings"
+
+	"github.com/pantheon-systems/search-secrets/pkg/errors"
+	gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
+	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )
 
 type (
-    FileChange struct {
-        commit        *Commit
-        Path          string
-        gitFileChange *gitobject.Change
-        memo          fileChangeMemo
-    }
-    Chunk struct {
-        Type    diff_operation.DiffOperationEnum
-        Content string
-    }
-    fileChangeMemo struct {
-        gitPatch    *gitobject.Patch
-        gitChunks   []gitdiff.Chunk
-        chunks      []Chunk
-        patchString string
-        diff        *diffpkg.Diff
-    }
+	FileChange struct {
+		Commit          *Commit
+		Path            string
+		Chunks          []*Chunk
+		IsBinaryOrEmpty bool
+		fileChangeMemo
+	}
+	fileChangeMemo struct {
+		diff *Diff
+	}
+	Chunk struct {
+		Operation DiffOperation
+		Content   string
+	}
 )
 
-func NewFileChange(commit *Commit, gitFileChange *gitobject.Change) (result *FileChange) {
-    return &FileChange{
-        commit:        commit,
-        Path:          gitFileChange.To.Name,
-        gitFileChange: gitFileChange,
-        memo:          fileChangeMemo{},
-    }
+func NewFileChange(commit *Commit, gitFileChange *gitobject.Change) (result *FileChange, err error) {
+	var chunks []*Chunk
+	var isBinaryOrEmpty bool
+	chunks, isBinaryOrEmpty, err = gatherPatchData(commit, gitFileChange)
+	if err != nil {
+		err = errors.WithMessage(err, "unable to get file patch")
+		return
+	}
+
+	result = &FileChange{
+		Commit:          commit,
+		Path:            gitFileChange.To.Name,
+		Chunks:          chunks,
+		IsBinaryOrEmpty: isBinaryOrEmpty,
+		fileChangeMemo:  fileChangeMemo{},
+	}
+	return
 }
 
-func (fcc *FileChange) IsBinaryOrEmpty() (result bool, err error) {
-    var filePatch gitdiff.FilePatch
-    filePatch, err = fcc.getGitFilePatch()
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file patch")
-        return
-    }
+func (fcc *FileChange) Diff() (result *Diff, err error) {
+	if fcc.diff != nil {
+		result = fcc.diff
+		return
+	}
 
-    result = filePatch.IsBinary()
-    return
+	if len(fcc.Chunks) == 0 {
+		err = errors.New("no chunks")
+		return
+	}
+
+	var lineMap map[int]int
+	var lineStrings []string
+	lineMap, lineStrings, err = buildDiffLineInfo(fcc.Chunks)
+	if err != nil {
+		err = errors.WithMessage(err, "unable to get build line info")
+		return
+	}
+
+	var diff *Diff
+	diff, err = NewDiff(lineStrings, lineMap)
+	if err != nil {
+		err = errors.WithMessage(err, "unable to build diff")
+		return
+	}
+
+	result = diff
+
+	return
 }
 
-func (fcc *FileChange) Chunks() (result []Chunk, err error) {
-    if fcc.memo.chunks != nil {
-        result = fcc.memo.chunks
-        return
-    }
-
-    var filePatch gitdiff.FilePatch
-    filePatch, err = fcc.getGitFilePatch()
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file patch")
-        return
-    }
-
-    for _, gitChunk := range filePatch.Chunks() {
-        result = append(result, Chunk{
-            Type:    diff_operation.NewDiffOperationFromGitOperation(gitChunk.Type()),
-            Content: gitChunk.Content(),
-        })
-    }
-
-    fcc.memo.chunks = result
-
-    return
-}
-
-func (fcc *FileChange) Diff() (result *diffpkg.Diff, err error) {
-    if fcc.memo.diff != nil {
-        result = fcc.memo.diff
-        return
-    }
-
-    var chunks []Chunk
-    chunks, err = fcc.Chunks()
-
-    if len(chunks) == 0 {
-        err = errors.New("no chunks passed")
-        return
-    }
-
-    var lineMap map[int]int
-    var lineStrings []string
-    lineMap, lineStrings, err = buildDiffLineInfo(chunks)
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file patch")
-        return
-    }
-
-    var diff *diffpkg.Diff
-    diff, err = diffpkg.New(lineStrings, lineMap)
-    if err != nil {
-        err = errors.WithMessage(err, "unable to build diff")
-        return
-    }
-
-    result = diff
-
-    return
-}
-
-func (fcc *FileChange) PatchString() (result string, err error) {
-    if fcc.memo.patchString != "" {
-        result = fcc.memo.patchString
-        return
-    }
-
-    var patch *gitobject.Patch
-    patch, err = fcc.getGitPatch()
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file patch")
-        return
-    }
-
-    buf := bytes.NewBuffer(nil)
-    encoder := gitdiff.NewUnifiedEncoder(buf, 3)
-    if err = encoder.Encode(patch); err != nil {
-        err = errors.WithMessage(err, "unable to encode file patch")
-        return
-    }
-
-    result = buf.String()
-
-    fcc.memo.patchString = result
-    return
-}
-
-func (fcc *FileChange) HasCodeChanges() (result bool, err error) {
-    var chunks []Chunk
-    chunks, err = fcc.Chunks()
-    result = len(chunks) > 0
-    return
+func (fcc *FileChange) HasCodeChanges() (result bool) {
+	return len(fcc.Chunks) > 0
 }
 
 func (fcc *FileChange) FileContents() (result string, err error) {
-    return fcc.commit.FileContents(fcc.Path)
-}
-
-func (fcc *FileChange) getGitPatch() (result *gitobject.Patch, err error) {
-    defer errors.CatchPanicSetErr(&err, "unable to retrieve patch")
-
-    if fcc.memo.gitPatch != nil {
-        return fcc.memo.gitPatch, nil
-    }
-
-    fcc.memo.gitPatch, err = fcc.wrapPatch()
-    result = fcc.memo.gitPatch
-
-    return
-}
-
-func (fcc *FileChange) getGitFilePatch() (result gitdiff.FilePatch, err error) {
-    var patch *gitobject.Patch
-    patch, err = fcc.getGitPatch()
-    if err != nil {
-        err = errors.WithMessage(err, "unable to get file patch")
-        return
-    }
-
-    if patch == nil {
-        err = errors.New("Filepatches is nil?")
-        return
-    }
-    result = patch.FilePatches()[0]
-    return
+	return fcc.Commit.FileContents(fcc.Path)
 }
 
 func (fcc *FileChange) IsDeletion() bool {
-    return fcc.Path == ""
+	return fcc.Path == ""
 }
 
-func buildDiffLineInfo(chunks []Chunk) (result map[int]int, diffLines []string, err error) {
-    fileLineNum := 1
-    diffLineNum := 1
+func gatherPatchData(commit *Commit, gitFileChange *gitobject.Change) (chunks []*Chunk, isBinaryOrEmpty bool, err error) {
+	var filePatch gitdiff.FilePatch
+	filePatch, err = getFilePatch(commit, gitFileChange)
+	if err != nil {
+		err = errors.WithMessage(err, "unable to get file patch")
+		return
+	}
 
-    result = map[int]int{}
-    for _, chunk := range chunks {
-        chunkString := chunk.Content
+	// Get chunks
+	gitChunks := filePatch.Chunks()
+	chunks = make([]*Chunk, len(gitChunks))
+	for i, gitChunk := range gitChunks {
+		chunks[i] = &Chunk{
+			Operation: NewDiffOperationFromGit(gitChunk.Type()),
+			Content:   gitChunk.Content(),
+		}
+	}
 
-        // Remove the trailing line break
-        chunkLen := len(chunkString)
-        if chunkLen > 0 && chunkString[chunkLen-1:] == "\n" {
-            chunkString = chunkString[:chunkLen-1]
-        }
+	// Get binary flag
+	isBinaryOrEmpty = filePatch.IsBinary()
 
-        lines := strings.Split(chunkString, "\n")
-        prefix := chunk.Type.Value().Prefix
-
-        for _, line := range lines {
-            result[diffLineNum] = fileLineNum
-
-            diffLines = append(diffLines, prefix+line)
-
-            // Prepare for next
-            diffLineNum += 1
-            if chunk.Type.Value() != diff_operation.DeleteEnum.Value() {
-                fileLineNum += 1
-            }
-        }
-    }
-
-    return
+	return
 }
 
-func (fcc *FileChange) wrapPatch() (result *gitobject.Patch, err error) {
-    fcc.commit.repository.mutex.Lock()
-    defer fcc.commit.repository.mutex.Unlock()
+func getFilePatch(commit *Commit, gitFileChange *gitobject.Change) (result gitdiff.FilePatch, err error) {
+	commit.repository.mutex.Lock()
+	defer commit.repository.mutex.Unlock()
 
-    return fcc.gitFileChange.Patch()
+	defer errors.CatchPanicSetErr(&err, "panic getting file patch")
+
+	// Get file patch
+	var patch *gitobject.Patch
+	patch, err = gitFileChange.Patch()
+	if err != nil {
+		err = errors.WithMessage(err, "unable to get file patch")
+		return
+	}
+	if patch == nil {
+		err = errors.New("patch is nil")
+		return
+	}
+	filePatches := patch.FilePatches()
+	if filePatches == nil {
+		err = errors.New("file patches is nil")
+		return
+	}
+	if filePatches[0] == nil {
+		err = errors.New("file patch is nil")
+		return
+	}
+	result = filePatches[0]
+
+	return
+}
+
+func buildDiffLineInfo(chunks []*Chunk) (result map[int]int, diffLines []string, err error) {
+	fileLineNum := 1
+	diffLineNum := 1
+
+	result = map[int]int{}
+	for _, chunk := range chunks {
+		chunkString := chunk.Content
+
+		// Remove the trailing line break
+		chunkLen := len(chunkString)
+		if chunkLen > 0 && chunkString[chunkLen-1:] == "\n" {
+			chunkString = chunkString[:chunkLen-1]
+		}
+
+		lines := strings.Split(chunkString, "\n")
+		prefix := chunk.Operation.Prefix()
+
+		for _, line := range lines {
+			result[diffLineNum] = fileLineNum
+
+			diffLines = append(diffLines, prefix+line)
+
+			// Prepare for next
+			diffLineNum += 1
+			if chunk.Operation != Delete {
+				fileLineNum += 1
+			}
+		}
+	}
+
+	return
 }
