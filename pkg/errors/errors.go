@@ -301,10 +301,23 @@ func fieldsString(fields map[string]interface{}) string {
 	return strings.TrimSpace(string(formattedFields))
 }
 
+func WasCausedBy(err, matchErr error) bool {
+	if matchErr == nil {
+		return false
+	}
+	for {
+		if err == nil {
+			return false
+		}
+		if err == matchErr {
+			return true
+		}
+		err = getInnerError(err)
+	}
+}
+
 func getInnerError(err error) error {
-	cer, ok := err.(interface {
-		Cause() error
-	})
+	cer, ok := err.(interface{ Cause() error })
 	if !ok {
 		return nil
 	}

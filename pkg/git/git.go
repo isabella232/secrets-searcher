@@ -56,5 +56,5 @@ func (g *Git) IsCloneValid(cloneDir string) (result bool) {
 }
 
 func IsErrEmptyRemoteRepository(err error) bool {
-	return err == gittransport.ErrEmptyRemoteRepository
+	return errors.WasCausedBy(err, gittransport.ErrEmptyRemoteRepository)
 }

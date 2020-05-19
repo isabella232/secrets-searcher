@@ -67,7 +67,7 @@ func template_reportTemplate() string {
 		"                        </div>\n" +
 		"                    </div>\n" +
 		"\n" +
-		"                    <div class=\"expander-target\">\n" +
+		"                    <div class=\"expander-target expander-collapsed\">\n" +
 		"                        {{range $, $secret := $secrets}}\n" +
 		"                            {{template \"secret-rows\" $secret}}\n" +
 		"                        {{end}}\n" +
