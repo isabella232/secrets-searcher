@@ -1,6 +1,7 @@
 package git
 
 import (
+	"path"
 	"strings"
 
 	"github.com/pantheon-systems/search-secrets/pkg/errors"
@@ -85,6 +86,14 @@ func (fcc *FileChange) FileContents() (result string, err error) {
 
 func (fcc *FileChange) IsDeletion() bool {
 	return fcc.Path == ""
+}
+
+func (fcc *FileChange) FileType() (result string) {
+	result = path.Ext(fcc.Path)
+	if result == "" {
+		result = path.Base(fcc.Path)
+	}
+	return
 }
 
 func gatherPatchData(commit *Commit, gitFileChange *gitobject.Change) (chunks []*Chunk, isBinaryOrEmpty bool, err error) {

@@ -19,9 +19,11 @@ type AppConfig struct {
 	OutputDir         string       `param:"output-dir" env:"true"`
 	NonZero           bool         `param:"non-zero" env:"true"`
 	Interactive       bool         `param:"interactive" env:"true"`
-	EnableSourcePhase bool         `param:"enable-source-phase"`
-	EnableSearchPhase bool         `param:"enable-search-phase"`
-	EnableReportPhase bool         `param:"enable-report-phase"`
+	EnableSourcePhase bool         `param:"enable-source-phase" env:"true"`
+	EnableSearchPhase bool         `param:"enable-search-phase" env:"true"`
+	EnableReportPhase bool         `param:"enable-report-phase" env:"true"`
+	EnableProfiling   bool         `param:"enable-profiling" env:"true"`
+	RescanPrevious    bool         `param:"rescan-previous" env:"true"`
 	DevConfig         DevConfig    `param:"dev"`
 	SourceConfig      SourceConfig `param:"source"`
 	SearchConfig      SearchConfig `param:"search"`

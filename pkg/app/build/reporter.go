@@ -3,6 +3,8 @@ package build
 import (
 	"path/filepath"
 
+	"github.com/pantheon-systems/search-secrets/pkg/stats"
+
 	"github.com/pantheon-systems/search-secrets/pkg/manip"
 
 	"github.com/pantheon-systems/search-secrets/pkg/app/config"
@@ -12,8 +14,7 @@ import (
 	"github.com/pantheon-systems/search-secrets/pkg/source"
 )
 
-func Reporter(reporterCfg *config.ReportConfig, outputDir, url string, sourceProvider source.ProviderI, secretIDFilter *manip.SliceFilter, db *database.Database, log logg.Logg) *reporterpkg.Reporter {
-
+func Reporter(reporterCfg *config.ReportConfig, outputDir, url string, sourceProvider source.ProviderI, secretIDFilter *manip.SliceFilter, stats *stats.Stats, db *database.Database, log logg.Logg) *reporterpkg.Reporter {
 	reportDir := reporterCfg.ReportDir
 	if reportDir == "" {
 		reportDir = filepath.Join(outputDir, "report")
@@ -32,6 +33,7 @@ func Reporter(reporterCfg *config.ReportConfig, outputDir, url string, sourcePro
 		reporterCfg.PreReportInterval,
 		secretIDFilter,
 		sourceProvider,
+		stats,
 		db,
 		log,
 	)

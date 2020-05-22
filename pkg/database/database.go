@@ -100,10 +100,10 @@ func (d *Database) read(collection, resource string, v interface{}) (err error) 
 	defer d.unlockTable(collection)
 
 	if !d.tableExistsUnsafe(collection) {
-		return errors.Errorv("%s collection does not exist", collection)
+		return errors.Errorf("%s collection does not exist", collection)
 	}
 	if !d.existsUnsafe(collection, resource) {
-		return errors.Errorv("%s record %s does not exist", collection, resource)
+		return errors.Errorf("%s record %s does not exist", collection, resource)
 	}
 
 	file := filepath.Join(d.dir, collection, resource+".json")

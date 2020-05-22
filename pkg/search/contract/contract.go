@@ -130,6 +130,7 @@ type (
 		Value  string
 		Code   bool
 		URL    string
+		Debug  bool
 	}
 
 	JobResult struct {

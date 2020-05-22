@@ -15,9 +15,18 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func Source(sourceDir string, skipFetch bool, repoFilter *manip.SliceFilter, git *gitpkg.Git, sourceProvider source.ProviderI, interact *interactpkg.Interact, db *database.Database, sourceLog logg.Logg) (result *source.Source) {
-	result = source.New(sourceDir, skipFetch, repoFilter, git, sourceProvider, interact, db, sourceLog)
-	return
+func Source(sourceCfg *config.SourceConfig, sourceDir string, repoFilter *manip.SliceFilter, git *gitpkg.Git, sourceProvider source.ProviderI, interact *interactpkg.Interact, db *database.Database, sourceLog logg.Logg) (result *source.Source) {
+	return source.New(
+		sourceDir,
+		sourceCfg.SkipFetch,
+		sourceCfg.WorkerCount,
+		repoFilter,
+		git,
+		sourceProvider,
+		interact,
+		db,
+		sourceLog,
+	)
 }
 
 func buildSourceProvider(sourceCfg *config.SourceConfig, git *gitpkg.Git, sourceLog logg.Logg) (result source.ProviderI) {

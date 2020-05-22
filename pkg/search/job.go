@@ -3,9 +3,11 @@ package search
 import (
 	"fmt"
 
+	"github.com/pantheon-systems/search-secrets/pkg/stats"
+
 	"github.com/pantheon-systems/search-secrets/pkg/database"
 	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
+	"github.com/pantheon-systems/search-secrets/pkg/git"
 	"github.com/pantheon-systems/search-secrets/pkg/interact/progress"
 	"github.com/pantheon-systems/search-secrets/pkg/logg"
 	"github.com/pantheon-systems/search-secrets/pkg/manip"
@@ -17,7 +19,7 @@ type (
 		name         string
 		repoID       string
 		repoName     string
-		repository   *gitpkg.Repository
+		repository   *git.Repository
 		commitHashes []string
 		oldest       string
 		bar          *progress.Bar
@@ -29,24 +31,17 @@ type (
 
 		// Results
 		results []*contract.JobResult
-		ignores map[*gitpkg.FileChange][]*manip.FileRange
+		ignores map[*git.FileChange][]*manip.FileRange
+
+		scope    *Scope
+		scopeLog logg.Logg
 
 		// Stats
 		secretTracker manip.Set
-
-		// Logging concerns
-		commit     *gitpkg.Commit
-		fileChange *gitpkg.FileChange
-		proc       contract.NamedProcessorI
-		line       int
-
-		scopedLogCache logg.Logg
 	}
 )
 
-func NewJob(name, repoID, repoName string, repository *gitpkg.Repository, commitHashes []string, oldest string,
-	bar *progress.Bar, log logg.Logg) (result *Job) {
-
+func NewJob(name, repoID, repoName string, repository *git.Repository, commitHashes []string, oldest string, enableProfiling bool, bar *progress.Bar, log logg.Logg, stats *stats.Stats) (result *Job) {
 	return &Job{
 		name:         name,
 		repoID:       repoID,
@@ -57,13 +52,14 @@ func NewJob(name, repoID, repoName string, repository *gitpkg.Repository, commit
 		bar:          bar,
 		log:          log,
 		jobState: jobState{
+			scope:         NewScope(enableProfiling, stats),
 			secretTracker: manip.NewEmptyBasicSet(),
-			ignores:       make(map[*gitpkg.FileChange][]*manip.FileRange),
+			ignores:       make(map[*git.FileChange][]*manip.FileRange),
 		},
 	}
 }
 
-func (j *Job) Start() (result []*gitpkg.Commit, err error) {
+func (j *Job) Start() (result []*git.Commit, err error) {
 	if j.startedFlag {
 		panic("already started")
 	}
@@ -77,95 +73,61 @@ func (j *Job) Start() (result []*gitpkg.Commit, err error) {
 
 	result, err = j.commits()
 
+	j.scope.StartRepo(j.repoName)
+	j.scope.StartRepoJob(j.name)
+
 	return
 }
 
-func (j *Job) SearchingCommit(commit *gitpkg.Commit) {
-	j.commit = commit
-	j.fileChange = nil
-	j.proc = nil
-	j.line = 0
-
-	j.scopedLogCache = nil
+func (j *Job) SearchingCommit(commit *git.Commit) {
+	j.scope.StartCommit(commit)
 }
 
-func (j *Job) SearchingFileChange(fileChange *gitpkg.FileChange) {
-	if j.commit == nil {
-		panic("commit not set, cannot set file change")
-	}
-	j.fileChange = fileChange
-	j.proc = nil
-	j.line = 0
-
-	j.scopedLogCache = nil
+func (j *Job) SearchingFileChange(fileChange *git.FileChange) {
+	j.scope.StartFileChange(fileChange)
 }
 
-func (j *Job) Diff() (result *gitpkg.Diff) {
-	if j.fileChange == nil {
+func (j *Job) SearchingWithProcessor(proc contract.NamedProcessorI) {
+	j.scope.StartProc(proc)
+}
+
+func (j *Job) SearchingLine(line int) {
+	j.scope.StartLine(line)
+}
+
+func (j *Job) Commit() (commit *git.Commit) {
+	return j.scope.Commit
+}
+
+func (j *Job) Processor() (proc contract.NamedProcessorI) {
+	return j.scope.Proc
+}
+
+func (j *Job) FileChange() (fileChange *git.FileChange) {
+	return j.scope.FileChange
+}
+
+func (j *Job) Line() (line int) {
+	return j.scope.Line
+}
+
+func (j *Job) Diff() (result *git.Diff) {
+	if j.scope.FileChange == nil {
 		panic("file change not set, cannot get diff")
 	}
 
 	var err error
-	if result, err = j.fileChange.Diff(); err != nil {
+	if result, err = j.scope.FileChange.Diff(); err != nil {
 		j.Log(nil).Error("unable to get diff")
 		panic("unable to get diff")
 	}
 
-	//result.SetLineHook = func(line *gitpkg.Line) {
-	//	j.SearchingLine(line.NumInFile)
-	//}
-
 	return
 }
 
-func (j *Job) SearchingWithProcessor(proc contract.NamedProcessorI) {
-	if j.commit == nil {
-		panic("commit not set, cannot set processor")
-	}
-	if j.fileChange == nil {
-		panic("file change not set, cannot set processor")
-	}
-	j.proc = proc
-	j.line = 0
-
-	j.scopedLogCache = nil
-}
-
-func (j *Job) SearchingLine(line int) {
-	if j.commit == nil {
-		panic("commit not set, cannot set line")
-	}
-	if j.fileChange == nil {
-		panic("file change not set, cannot set line")
-	}
-	if j.proc == nil {
-		panic("processor not set, cannot set line")
-	}
-	j.line = line
-
-	j.scopedLogCache = nil
-}
-
-func (j *Job) Commit() (commit *gitpkg.Commit) {
-	return j.commit
-}
-
-func (j *Job) Processor() (proc contract.NamedProcessorI) {
-	return j.proc
-}
-
-func (j *Job) FileChange() (fileChange *gitpkg.FileChange) {
-	return j.fileChange
-}
-
-func (j *Job) Line() (line int) {
-	return j.line
-}
-
 func (j *Job) Log(prefixLog logg.Logg) (result logg.Logg) {
-	if j.scopedLogCache != nil {
-		result = j.scopedLogCache
-		return
+	if j.scopeLog != nil {
+		return j.scopeLog
 	}
 
 	result = j.log
@@ -176,20 +138,9 @@ func (j *Job) Log(prefixLog logg.Logg) (result logg.Logg) {
 		}
 	}
 
-	if j.commit != nil {
-		result = result.WithField("commit", j.commit.Hash)
-	}
-	if j.fileChange != nil {
-		result = result.WithField("path", j.fileChange.Path)
-	}
-	if j.proc != nil {
-		result = result.WithField("processor", j.proc.GetName())
-	}
-	if j.line != 0 {
-		result = result.WithField("line", j.line)
-	}
-
-	j.scopedLogCache = result
+	// Add scope fields
+	result = result.WithFields(j.scope.Fields())
+	j.scopeLog = result
 
 	return
 }
@@ -206,7 +157,7 @@ func (j *Job) SubmitResult(result *contract.Result) {
 	}
 
 	// Check if the secret has been ignored by another processor
-	if ignores, ok := j.ignores[j.fileChange]; ok {
+	if ignores, ok := j.ignores[j.scope.FileChange]; ok {
 		for _, ignore := range ignores {
 			if ignore.Overlaps(result.FileRange) {
 				log.WithField("existingIgnore", ignore).
@@ -217,13 +168,13 @@ func (j *Job) SubmitResult(result *contract.Result) {
 	}
 
 	// Add result to ignore list
-	j.ignores[j.fileChange] = append(j.ignores[j.fileChange], result.FileRange)
+	j.ignores[j.scope.FileChange] = append(j.ignores[j.scope.FileChange], result.FileRange)
 
 	// Build result
 	j.results = append(j.results, &contract.JobResult{
 		RepoID:           j.repoID,
-		Processor:        j.proc,
-		FileChange:       j.fileChange,
+		Processor:        j.scope.Proc,
+		FileChange:       j.scope.FileChange,
 		SecretValue:      result.SecretValue,
 		FileRange:        result.FileRange,
 		ContextFileRange: result.ContextFileRange,
@@ -243,24 +194,24 @@ func (j *Job) SubmitIgnore(fileRange *manip.FileRange) {
 	// Validate
 	j.checkSubmission(fileRange)
 
-	j.ignores[j.fileChange] = append(j.ignores[j.fileChange], fileRange)
+	j.ignores[j.scope.FileChange] = append(j.ignores[j.scope.FileChange], fileRange)
 }
 
 func (j *Job) checkSubmission(fileRange *manip.FileRange) {
-	if j.proc == nil {
+	if j.scope.Proc == nil {
 		panic("no processor")
 	}
-	if j.fileChange == nil {
+	if j.scope.FileChange == nil {
 		panic("no file change")
 	}
 	if fileRange == nil {
 		panic("no file range submitted")
 	}
-	procName := j.proc.GetName()
+	procName := j.scope.Proc.GetName()
 	if procName == "" {
 		panic("missing proc name")
 	}
-	if fileRange.StartLineNum != j.line {
+	if fileRange.StartLineNum != j.scope.Line {
 		j.Log(j.log).WithField("submittedLine", fileRange.StartLineNum).
 			Warn("you didn't tell the job you were searching this line")
 	}
@@ -286,12 +237,12 @@ func (j *Job) Increment() {
 }
 
 func (j *Job) Finish() {
+	j.scope.FinishRepo()
+
 	if j.bar != nil {
 		secretsFound := j.secretTracker.Len()
-		message := fmt.Sprintf("%d commits searched", len(j.commitHashes))
-		if secretsFound > 0 {
-			message += fmt.Sprintf(", %d SECRETS FOUND", secretsFound)
-		}
+		message := fmt.Sprintf("%d commits searched, %d secrets found",
+			len(j.commitHashes), secretsFound)
 
 		j.bar.Finished(message)
 	}
@@ -300,26 +251,21 @@ func (j *Job) Finish() {
 }
 
 func (j *Job) GetJobResults() []*contract.JobResult {
-
 	results := *&j.results
 
-	// FIXME
-	j.commit = nil
-	j.fileChange = nil
-	j.proc = nil
-	j.scopedLogCache = nil
-	j.ignores = nil
-	// FIXME Should these be in the state?
+	// Self-destruct for GC
 	j.repository = nil
-	j.commitHashes = nil
+	j.results = nil
+	j.ignores = nil
+	j.scope = nil
 
 	return results
 }
 
-func (j *Job) commits() (result []*gitpkg.Commit, err error) {
-	result = []*gitpkg.Commit{}
+func (j *Job) commits() (result []*git.Commit, err error) {
+	result = []*git.Commit{}
 	for _, commitHash := range j.commitHashes {
-		var commit *gitpkg.Commit
+		var commit *git.Commit
 		commit, err = j.repository.Commit(commitHash)
 		if err != nil {
 			err = errors.WithMessagev(err, "unable to get commit", commitHash)

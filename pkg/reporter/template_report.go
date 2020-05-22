@@ -44,7 +44,13 @@ func template_reportTemplate() string {
 		"    </table>\n" +
 		"\n" +
 		"    {{if not .Secrets}}\n" +
-		"        <p>No secrets were found.</p>\n" +
+		"        <div class=\"container-fluid\">\n" +
+		"            <div class=\"row\">\n" +
+		"                <div class=\"col\">\n" +
+		"                    No secrets were found.\n" +
+		"                </div>\n" +
+		"            </div>\n" +
+		"        </div>\n" +
 		"    {{else}}\n" +
 		"        <div class=\"container-fluid\">\n" +
 		"            <p>\n" +
@@ -67,7 +73,7 @@ func template_reportTemplate() string {
 		"                        </div>\n" +
 		"                    </div>\n" +
 		"\n" +
-		"                    <div class=\"expander-target\">\n" +
+		"                    <div class=\"expander-target expander-collapsed\">\n" +
 		"                        {{range $, $secret := $secrets}}\n" +
 		"                            {{template \"secret-rows\" $secret}}\n" +
 		"                        {{end}}\n" +
@@ -113,10 +119,7 @@ func template_reportTemplate() string {
 		"            </div>\n" +
 		"        </div>\n" +
 		"        {{range $, $extra := .Extras}}\n" +
-		"            <div class=\"row\">\n" +
-		"                <div class=\"col col-2 label\">{{$extra.Header}}</div>\n" +
-		"                <div class=\"col col-10\">{{template \"extra\" $extra}}</div>\n" +
-		"            </div>\n" +
+		"            {{template \"extra-row\" $extra}}\n" +
 		"        {{end}}\n" +
 		"        {{range $, $finding := .Findings}}\n" +
 		"            <div class=\"finding expander row\">\n" +
@@ -163,10 +166,7 @@ func template_reportTemplate() string {
 		"                    </div>\n" +
 		"                </div>\n" +
 		"                {{range $, $extra := $finding.Extras}}\n" +
-		"                    <div class=\"row\">\n" +
-		"                        <div class=\"col col-2 label\">{{$extra.Header}}</div>\n" +
-		"                        <div class=\"col col-10\">{{template \"extra\" $extra}}</div>\n" +
-		"                    </div>\n" +
+		"                    {{template \"extra-row\" $extra}}\n" +
 		"                {{end}}\n" +
 		"            </div>\n" +
 		"        {{end}}\n" +
@@ -176,6 +176,14 @@ func template_reportTemplate() string {
 		"{{define \"link\"}}\n" +
 		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.linkData*/ -}}\n" +
 		"    <a href=\"{{.URL}}\" title=\"{{.Tooltip}}\" data-toggle=\"tooltip\" data-placement=\"top\">{{.Label}}</a>\n" +
+		"{{end}}\n" +
+		"\n" +
+		"{{define \"extra-row\"}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}\n" +
+		"    <div class=\"row{{if .Debug}} debug{{end}}\">\n" +
+		"        <div class=\"col col-2 label\">{{.Header}}</div>\n" +
+		"        <div class=\"col col-10\">{{template \"extra\" .}}</div>\n" +
+		"    </div>\n" +
 		"{{end}}\n" +
 		"\n" +
 		"{{define \"extra\"}}\n" +

@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
 )
 
 const squashFlag = "squash"
@@ -48,8 +46,6 @@ type (
 func NewParam(structPtr, leafFieldPtr interface{}, tagName string, structFilter structFilterFunc) (result *Param) {
 	structPtrVal := reflect.ValueOf(structPtr)
 	leafFieldPtrVal := reflect.ValueOf(leafFieldPtr)
-	dev.PrintVal(structPtrVal, "P.======= NewParam structPtrVal")
-	dev.PrintVal(leafFieldPtrVal, "P.                 leafFieldPtrVal")
 
 	// structPtrVal
 	if structPtrVal.Kind() != reflect.Ptr {
@@ -99,8 +95,6 @@ func buildFieldIndex(structElemVal, leafFieldPointerVal reflect.Value, structFil
 
 	// Find direct field
 	// TODO Test if this can tell the difference between two struct fields pointing to the same object
-	dev.PrintVal(structElemVal, "P.bFIndex PARENT")
-	dev.PrintVal(leafFieldPointerVal, fmt.Sprintf("P.bFIndex LOOKING FOR THIS POINTER, of type %s", leafFieldPointerVal.Type().String()))
 	for i := structElemVal.NumField() - 1; i >= 0; i-- {
 		value := structElemVal.Field(i)
 
@@ -108,17 +102,13 @@ func buildFieldIndex(structElemVal, leafFieldPointerVal reflect.Value, structFil
 		if value.Kind() != reflect.Ptr {
 			valuePtrVal = value.Addr()
 		}
-		dev.PrintVal(valuePtrVal, "P.bFIndex ?")
 		if valuePtrVal.Pointer() == leafFieldPointerVal.Pointer() {
-			dev.PrintVal(valuePtrVal, "YES to pointer")
 
 			// Do additional type comparison because it's possible that the address of
 			// an embedded struct is the same as the first field of the embedded struct
 			if valuePtrVal.Type() != leafFieldPointerVal.Type() {
-				dev.PrintVal(valuePtrVal, fmt.Sprintf("NO to type (%s == %s)\n", value.Type(), leafFieldPointerVal.Type()))
 				continue
 			}
-			dev.PrintVal(valuePtrVal, fmt.Sprintf("YES to type (%s == %s)\n", value.Type(), leafFieldPointerVal.Type()))
 
 			// We found the field as a direct child, so our field index only has one element.
 			return []int{i}
@@ -138,16 +128,13 @@ func buildFieldIndex(structElemVal, leafFieldPointerVal reflect.Value, structFil
 		valueElemVal := valuePtrVal.Elem()
 
 		if valueElemVal.Kind() != reflect.Struct {
-			dev.PrintVal(valuePtrVal, "skipped because not a struct")
 			continue
 		}
 
 		if structFilter != nil && !structFilter(valueElemVal) {
-			dev.PrintVal(valuePtrVal, "skipped because didn't match filter")
 			continue
 		}
 
-		dev.PrintVal(valuePtrVal, "YES to pointer")
 		childFieldIndex := buildFieldIndex(valueElemVal, leafFieldPointerVal, structFilter)
 
 		// If it's nil then the leaf field is under another child (or else we'll panic later)

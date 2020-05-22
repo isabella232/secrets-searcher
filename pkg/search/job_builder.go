@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/pantheon-systems/search-secrets/pkg/stats"
+
 	"github.com/pantheon-systems/search-secrets/pkg/database"
 	"github.com/pantheon-systems/search-secrets/pkg/errors"
 	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
@@ -29,14 +31,16 @@ type (
 		sourceDir string
 
 		// Execution parameters
-		workerCount   int
-		chunkSize     int
-		showBarPerJob bool
+		workerCount     int
+		chunkSize       int
+		showBarPerJob   bool
+		enableProfiling bool
 
 		// Services
 		git *gitpkg.Git
 
 		interact *interactpkg.Interact
+		stats    *stats.Stats
 		db       *database.Database
 		log      logg.Logg
 	}
@@ -51,30 +55,20 @@ type (
 	}
 )
 
-func NewJobBuilder(
-	repoFilter *manip.SliceFilter,
-	sourceDir string,
-	commitFilter *gitpkg.CommitFilter,
-	workerCount int,
-	chunkSize int,
-	showBarPerJob bool,
-	git *gitpkg.Git,
-	interact *interactpkg.Interact,
-	db *database.Database,
-	log logg.Logg,
-) (result *JobBuilder) {
-
+func NewJobBuilder(repoFilter *manip.SliceFilter, sourceDir string, commitFilter *gitpkg.CommitFilter, workerCount int, chunkSize int, showBarPerJob bool, enableProfiling bool, git *gitpkg.Git, interact *interactpkg.Interact, stats *stats.Stats, db *database.Database, log logg.Logg) (result *JobBuilder) {
 	return &JobBuilder{
-		repoFilter:    repoFilter,
-		sourceDir:     sourceDir,
-		commitFilter:  commitFilter,
-		workerCount:   workerCount,
-		chunkSize:     chunkSize,
-		showBarPerJob: showBarPerJob,
-		git:           git,
-		interact:      interact,
-		db:            db,
-		log:           log,
+		repoFilter:      repoFilter,
+		sourceDir:       sourceDir,
+		commitFilter:    commitFilter,
+		workerCount:     workerCount,
+		chunkSize:       chunkSize,
+		showBarPerJob:   showBarPerJob,
+		enableProfiling: enableProfiling,
+		git:             git,
+		interact:        interact,
+		stats:           stats,
+		db:              db,
+		log:             log,
 	}
 }
 
@@ -281,8 +275,10 @@ func (s *JobBuilder) buildRepoJobs(repoDat *repoData, jobProg *progress.Progress
 			spawnedRepository,
 			jobCommitHashes,
 			repoDat.Oldest,
+			s.enableProfiling,
 			jobBar,
 			jobLog,
+			s.stats,
 		)
 	}
 

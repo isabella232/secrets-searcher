@@ -14,24 +14,25 @@ type Search struct {
 	jobBuilder *JobBuilder
 	jobRunner  *JobRunner
 	interact   *interactpkg.Interact
+	stats      *stats.Stats
 	db         *database.Database
 	log        logg.Logg
 }
 
-func New(jobBuilder *JobBuilder, jobRunner *JobRunner, interact *interactpkg.Interact,
-	db *database.Database, log logg.Logg) *Search {
+func New(jobBuilder *JobBuilder, jobRunner *JobRunner, interact *interactpkg.Interact, stats *stats.Stats, db *database.Database, log logg.Logg) *Search {
 
 	return &Search{
 		jobBuilder: jobBuilder,
 		jobRunner:  jobRunner,
 		interact:   interact,
+		stats:      stats,
 		db:         db,
 		log:        log,
 	}
 }
 
 func (s *Search) Search() (err error) {
-	stats.SearchStartTime = time.Now()
+	s.stats.SearchStartTime = time.Now()
 
 	s.log.Info("finding secrets ...")
 
@@ -58,16 +59,16 @@ func (s *Search) Search() (err error) {
 	s.log.Info("completed search")
 
 	// Stats
-	stats.CommitsSearchedCount = int64(commitsLen)
-	stats.SecretsFoundCount = int64(s.jobRunner.secretCount)
-	stats.SearchEndTime = time.Now()
+	s.stats.CommitsSearchedCount = int64(commitsLen)
+	s.stats.SecretsFoundCount = int64(s.jobRunner.secretCount)
+	s.stats.SearchEndTime = time.Now()
 
 	return
 }
 
 func countCommits(jobs []*Job) (result int) {
-	for _, job := range jobs {
-		result += len(job.commitHashes)
+	for _, j := range jobs {
+		result += len(j.commitHashes)
 	}
 	return
 }

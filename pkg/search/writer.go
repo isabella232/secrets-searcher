@@ -177,6 +177,7 @@ func (w *dbResultWriter) buildDBSecretExtra(extra *contract.ResultExtra, secretI
 		Value:     extra.Value,
 		Code:      extra.Code,
 		URL:       extra.URL,
+		Debug:     extra.Debug,
 	}
 }
 
@@ -190,5 +191,6 @@ func (w *dbResultWriter) buildDBFindingExtra(extra *contract.ResultExtra, findin
 		Value:     extra.Value,
 		Code:      extra.Code,
 		URL:       extra.URL,
+		Debug:     extra.Debug,
 	}
 }

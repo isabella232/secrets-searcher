@@ -30,10 +30,6 @@ func StringSet(values []string) (result *BasicSet) {
 	return
 }
 
-func NewBasicSetArgs(values ...string) (result *BasicSet) {
-	return StringSet(values)
-}
-
 func NewEmptyBasicSet() (result *BasicSet) {
 	return NewBasicSet(nil)
 }

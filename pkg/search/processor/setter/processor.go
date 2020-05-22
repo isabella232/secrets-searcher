@@ -139,6 +139,7 @@ func (p *Processor) findFirstSecretInStringUsingRule(job contract.LineProcessorJ
 		Header: "Regex",
 		Value:  matchingRe.String(),
 		Code:   true,
+		Debug:  true,
 	})
 
 	testLink := dev.RegexpTestLink(matchingRe, rest)
@@ -147,6 +148,7 @@ func (p *Processor) findFirstSecretInStringUsingRule(job contract.LineProcessorJ
 		Header: "Debug regex",
 		Value:  manip.Truncate(testLink, 50) + "...",
 		URL:    testLink,
+		Debug:  true,
 	})
 
 	findingExtras = append(findingExtras, &contract.ResultExtra{

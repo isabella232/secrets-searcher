@@ -33,7 +33,13 @@
     </table>
 
     {{if not .Secrets}}
-        <p>No secrets were found.</p>
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col">
+                    No secrets were found.
+                </div>
+            </div>
+        </div>
     {{else}}
         <div class="container-fluid">
             <p>
@@ -56,7 +62,7 @@
                         </div>
                     </div>
 
-                    <div class="expander-target">
+                    <div class="expander-target expander-collapsed">
                         {{range $, $secret := $secrets}}
                             {{template "secret-rows" $secret}}
                         {{end}}
@@ -102,10 +108,7 @@
             </div>
         </div>
         {{range $, $extra := .Extras}}
-            <div class="row">
-                <div class="col col-2 label">{{$extra.Header}}</div>
-                <div class="col col-10">{{template "extra" $extra}}</div>
-            </div>
+            {{template "extra-row" $extra}}
         {{end}}
         {{range $, $finding := .Findings}}
             <div class="finding expander row">
@@ -152,10 +155,7 @@
                     </div>
                 </div>
                 {{range $, $extra := $finding.Extras}}
-                    <div class="row">
-                        <div class="col col-2 label">{{$extra.Header}}</div>
-                        <div class="col col-10">{{template "extra" $extra}}</div>
-                    </div>
+                    {{template "extra-row" $extra}}
                 {{end}}
             </div>
         {{end}}
@@ -165,6 +165,14 @@
 {{define "link"}}
     {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.linkData*/ -}}
     <a href="{{.URL}}" title="{{.Tooltip}}" data-toggle="tooltip" data-placement="top">{{.Label}}</a>
+{{end}}
+
+{{define "extra-row"}}
+    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}
+    <div class="row{{if .Debug}} debug{{end}}">
+        <div class="col col-2 label">{{.Header}}</div>
+        <div class="col col-10">{{template "extra" .}}</div>
+    </div>
 {{end}}
 
 {{define "extra"}}
