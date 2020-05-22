@@ -1,11 +1,7 @@
 package manip
 
 import (
-	"fmt"
-	"math"
 	"regexp"
-	"strings"
-	"time"
 	"unicode/utf8"
 )
 
