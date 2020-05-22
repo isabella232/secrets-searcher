@@ -48,6 +48,7 @@ type (
 		Value     string
 		Code      bool
 		URL       string
+		Debug     bool
 	}
 	FindingExtras      []*FindingExtra
 	FindingExtraGroups map[string]FindingExtras
@@ -71,6 +72,7 @@ type (
 		Value     string
 		Code      bool
 		URL       string
+		Debug     bool
 	}
 	SecretExtras      []*SecretExtra
 	SecretExtraGroups map[string]SecretExtras

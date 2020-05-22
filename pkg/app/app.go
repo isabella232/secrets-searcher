@@ -18,17 +18,25 @@ import (
 )
 
 type App struct {
-	outputDir         string
-	logFile           string
-	nonZero           bool
+	outputDir       string
+	logFile         string
+	nonZero         bool
+	enableProfiling bool
+
 	enableSourcePhase bool
 	enableSearchPhase bool
 	enableReportPhase bool
-	source            *sourcepkg.Source
-	search            *searchpkg.Search
-	reporter          *reporterpkg.Reporter
-	db                *database.Database
-	log               logg.Logg
+
+	sourcePhaseCompleted bool
+	searchPhaseCompleted bool
+	reportPhaseCompleted bool
+
+	source   *sourcepkg.Source
+	search   *searchpkg.Search
+	reporter *reporterpkg.Reporter
+	stats    *stats.Stats
+	db       *database.Database
+	log      logg.Logg
 }
 
 func New(appCfg *config.AppConfig) (a *App, err error) {
@@ -53,9 +61,11 @@ func New(appCfg *config.AppConfig) (a *App, err error) {
 		enableSourcePhase: params.EnableSourcePhase,
 		enableSearchPhase: params.EnableSearchPhase,
 		enableReportPhase: params.EnableReportPhase,
+		enableProfiling:   params.EnableProfiling,
 		source:            params.Source,
 		search:            params.Search,
 		reporter:          params.Reporter,
+		stats:             params.Stats,
 		db:                params.DB,
 		log:               params.AppLog,
 	}
@@ -65,7 +75,7 @@ func New(appCfg *config.AppConfig) (a *App, err error) {
 
 func (a *App) Execute() (passed bool, err error) {
 	passed = true
-	stats.AppStartTime = time.Now()
+	a.stats.AppStartTime = time.Now()
 
 	// Create output directory
 	if err = os.MkdirAll(a.outputDir, 0700); err != nil {
@@ -96,7 +106,7 @@ func (a *App) Execute() (passed bool, err error) {
 			err = errors.WithMessage(err, "unable to execute source phase")
 			return
 		}
-		stats.SourcePhaseCompleted = true
+		a.sourcePhaseCompleted = true
 	}
 
 	// Search phase
@@ -124,8 +134,8 @@ func (a *App) Execute() (passed bool, err error) {
 			err = errors.WithMessage(err, "unable to execute search phase")
 			return
 		}
-		passed = !a.nonZero || stats.SecretsFoundCount == 0
-		stats.SearchPhaseCompleted = true
+		passed = !a.nonZero || a.stats.SecretsFoundCount == 0
+		a.searchPhaseCompleted = true
 	}
 
 	// Report phase
@@ -141,10 +151,10 @@ func (a *App) Execute() (passed bool, err error) {
 			err = errors.WithMessage(err, "unable to prepare report")
 			return
 		}
-		stats.ReportPhaseCompleted = true
+		a.reportPhaseCompleted = true
 	}
 
-	stats.AppEndTime = time.Now()
+	a.stats.AppEndTime = time.Now()
 
 	a.printDoneMessage()
 
@@ -153,28 +163,48 @@ func (a *App) Execute() (passed bool, err error) {
 
 func (a *App) printDoneMessage() {
 	// Execution duration
-	duration := stats.SearchEndTime.Sub(stats.SearchStartTime)
+	duration := a.stats.SearchEndTime.Sub(a.stats.SearchStartTime)
 	durationHuman := durafmt.ParseShort(duration)
 
 	// Duration per commit
 	var commitDuration time.Duration
-	if stats.CommitsSearchedCount != 0 {
-		commitDuration = time.Duration(int64(duration) / stats.CommitsSearchedCount)
+	if a.stats.CommitsSearchedCount != 0 {
+		commitDuration = time.Duration(int64(duration) / a.stats.CommitsSearchedCount)
+	}
+
+	if a.enableProfiling {
+		a.log.Info("Long running repos:")
+		a.logDurationStats(a.stats.RepoDurations.Stats())
+		a.log.Info("Long running commits:")
+		a.logDurationStats(a.stats.CommitDurations.Stats())
+		a.log.Info("Long running file changes:")
+		a.logDurationStats(a.stats.FileChangeDurations.Stats())
+		a.log.Info("Long running file types:")
+		a.logDurationStats(a.stats.FileTypeDurations.Stats())
 	}
 
 	// Log
 	a.log.Info("Command completed successfully")
-	if stats.SearchPhaseCompleted {
-		a.log.Infof("- Secrets found:       %d", stats.SecretsFoundCount)
+	if a.searchPhaseCompleted {
+		a.log.Infof("- Secrets found:       %d", a.stats.SecretsFoundCount)
 	}
-	if stats.ReportPhaseCompleted {
+	if a.reportPhaseCompleted {
 		a.log.Infof("- Report location:     %s", a.reporter.ReportDir)
 		a.log.Infof("- Report archive:      %s", a.reporter.ReportArchivesDir)
 	}
-	if stats.SearchPhaseCompleted {
+	if a.searchPhaseCompleted {
 		a.log.Infof("- Search duration:     %.2fs (%s)", duration.Seconds(), durationHuman)
-		a.log.Infof("- Commits searched:    %d", stats.CommitsSearchedCount)
+		a.log.Infof("- Commits searched:    %d", a.stats.CommitsSearchedCount)
 		a.log.Infof("- Duration per commit: %dms (%dns)",
 			commitDuration.Milliseconds(), commitDuration.Nanoseconds())
+	}
+}
+
+func (a *App) logDurationStats(stats []*stats.DurationStat) {
+	if stats == nil {
+		a.log.Info("- [none]")
+	}
+	for _, stat := range stats {
+		a.log.Infof("- %-20s %s", stat.Dur, stat.Item)
 	}
 }

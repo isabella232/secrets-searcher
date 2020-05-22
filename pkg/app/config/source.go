@@ -15,6 +15,7 @@ type SourceConfig struct {
 	IncludeRepos         []string `param:"include-repos" env:"true"`
 	ExcludeRepos         []string `param:"exclude-repos" env:"true"`
 	SkipFetch            bool     `param:"skip-fetch" env:"true"`
+	WorkerCount          int      `param:"worker-count" env:"true"`
 	LocalProviderConfig  `param:",squash"`
 	GithubProviderConfig `param:",squash"`
 }
@@ -29,11 +30,15 @@ func (sourceCfg *SourceConfig) SetDefaults() {
 	if sourceCfg.Provider == "" {
 		sourceCfg.Provider = source.Local.Value()
 	}
+	if sourceCfg.WorkerCount == 0 {
+		sourceCfg.WorkerCount = 5
+	}
 }
 
 func (sourceCfg SourceConfig) ValidateWithContext(ctx context.Context) (err error) {
 	err = va.ValidateStructWithContext(ctx, &sourceCfg,
 		va.Field(&sourceCfg.Provider, va.Required, va.In(manip.DowncastSlice(source.ValidProviderValues())...)),
+		va.Field(&sourceCfg.WorkerCount, va.Required),
 	)
 	if err != nil {
 		return

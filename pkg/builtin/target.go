@@ -22,6 +22,7 @@ func targetDefinitions() (result map[TargetName]*config.TargetConfig) {
 				`name\b`,
 				`file\b`,
 				`path\b`,
+				`pass(?:es|ing)`,
 			},
 			ValChars:               AnyChars(),
 			ValLenMin:              5,

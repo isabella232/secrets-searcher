@@ -16,16 +16,15 @@ import (
 
 type (
 	Source struct {
-		sourceDir string
-		skipFetch bool
-
-		repoFilter *manip.SliceFilter
-
-		git      *gitpkg.Git
-		provider ProviderI
-		interact *interactpkg.Interact
-		db       *database.Database
-		log      logg.Logg
+		sourceDir   string
+		skipFetch   bool
+		workerCount int
+		repoFilter  *manip.SliceFilter
+		git         *gitpkg.Git
+		provider    ProviderI
+		interact    *interactpkg.Interact
+		db          *database.Database
+		log         logg.Logg
 	}
 	ProviderI interface {
 		manip.Named
@@ -45,6 +44,7 @@ type (
 func New(
 	sourceDir string,
 	skipFetch bool,
+	workerCount int,
 	repoFilter *manip.SliceFilter,
 	git *gitpkg.Git,
 	provider ProviderI,
@@ -53,14 +53,15 @@ func New(
 	log logg.Logg,
 ) *Source {
 	return &Source{
-		sourceDir:  sourceDir,
-		skipFetch:  skipFetch,
-		repoFilter: repoFilter,
-		git:        git,
-		provider:   provider,
-		interact:   interact,
-		db:         db,
-		log:        log,
+		sourceDir:   sourceDir,
+		skipFetch:   skipFetch,
+		workerCount: workerCount,
+		repoFilter:  repoFilter,
+		git:         git,
+		provider:    provider,
+		interact:    interact,
+		db:          db,
+		log:         log,
 	}
 }
 
@@ -86,7 +87,7 @@ func (s *Source) PrepareSource() (err error) {
 }
 
 func (s *Source) cloneRepos(repoInfos []*RepoInfo) {
-	p := pool.NewPool(len(repoInfos), 5)
+	p := pool.NewPool(len(repoInfos), s.workerCount)
 	p.Start()
 
 	prog := s.interact.NewProgress()
@@ -213,11 +214,6 @@ func (s *Source) checkPrepare(repoInfos []*RepoInfo) (err error) {
 
 	if repoInfosInDB == nil {
 		err = errors.New("none of our repos are present in the database")
-		return
-	}
-
-	if len(repoInfosInDB) < len(repoInfos) {
-		err = errors.New("only some of our repos have been prepared")
 		return
 	}
 

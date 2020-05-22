@@ -161,10 +161,6 @@ var _ = Describe("Config tests", func() {
 		Entry("source.provider not from enum", setSourceProvider("not-in-enum"), va.ErrInInvalid),
 		Entry("source.local-dir inside of output directory",
 			setSourceLocalDirInsideOutputDir(), valid.ErrPathNotWithinParam),
-
-		// SearchConfig
-		Entry("search.whitelist-dir weird",
-			setSearchWhitelistDir("non-existentdir"), valid.ErrExistingDir),
 	)
 })
 
@@ -237,22 +233,6 @@ func setSourceLocalDir(value string) getCfgAndField {
 		c := buildAppConfigObjectFromFile("config-empty.yaml")
 		c.SourceConfig.LocalDir = value
 		return c, &c.SourceConfig.LocalDir
-	}
-}
-
-func setSearchWhitelistDir(value string) getCfgAndField {
-	return func() (*AppConfig, interface{}) {
-		c := buildAppConfigObjectFromFile("config-empty.yaml")
-		c.SearchConfig.WhitelistSecretDir = value
-		return c, &c.SearchConfig.WhitelistSecretDir
-	}
-}
-
-func setSearchWhitelistSecretDir(value string) getCfgAndField {
-	return func() (*AppConfig, interface{}) {
-		c := buildAppConfigObjectFromFile("config-empty.yaml")
-		c.SearchConfig.WhitelistSecretDir = value
-		return c, &c.SearchConfig.WhitelistSecretDir
 	}
 }
 

@@ -47,6 +47,15 @@ func TestTarget_ExcludeFormTokens(t *testing.T) {
 	})
 }
 
+func TestTarget_ExcludeKeyss(t *testing.T) {
+	runTargetTest(t, targetTest{
+		coreTarget:     builtin.Passwords,
+		key:            "/renewing-america/2012/3/15/morning-brief-senate-passes-highway-bill-focus-turns-to-house",
+		val:            "shhhshhhshhhshhhshhhshhhshhhshhhshhhshhh",
+		expMatchResult: search.KeyExcluded,
+	})
+}
+
 func TestTarget_ExcludeKeysEndingWithFile(t *testing.T) {
 	runTargetTest(t, targetTest{
 		coreTarget:     builtin.Passwords,
@@ -61,6 +70,15 @@ func TestTarget_ExcludeFilePaths(t *testing.T) {
 		coreTarget:     builtin.Passwords,
 		key:            "password",
 		val:            "the/path/to/password.json",
+		expMatchResult: search.ValFilePath,
+	})
+}
+
+func TestTarget_ExcludeFilePaths2(t *testing.T) {
+	runTargetTest(t, targetTest{
+		coreTarget:     builtin.Passwords,
+		key:            "password",
+		val:            "./the/path/path/path",
 		expMatchResult: search.ValFilePath,
 	})
 }

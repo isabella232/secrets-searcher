@@ -29,6 +29,7 @@ type (
 		groupBy           SecretGrouper
 		filter            SecretFilter
 		sourceProvider    source.ProviderI
+		stats             *stats.Stats
 		db                *database.Database
 		log               logg.Logg
 	}
@@ -84,6 +85,7 @@ type (
 		Code   bool      `yaml:"-"`
 		URL    string    `yaml:"url"`
 		Link   *linkData `yaml:"link"`
+		Debug  bool
 	}
 	linkData struct {
 		Label   string `yaml:"label"`
@@ -92,8 +94,7 @@ type (
 	}
 )
 
-func newBuilder(appURL string, enableDebugOutput bool, reportDir, secretsDir string, groupBy SecretGrouper, filter SecretFilter, sourceProvider source.ProviderI,
-	db *database.Database, log logg.Logg) *builder {
+func newBuilder(appURL string, enableDebugOutput bool, reportDir, secretsDir string, groupBy SecretGrouper, filter SecretFilter, sourceProvider source.ProviderI, stats *stats.Stats, db *database.Database, log logg.Logg) *builder {
 	return &builder{
 		appURL:            appURL,
 		enableDebugOutput: enableDebugOutput,
@@ -102,6 +103,7 @@ func newBuilder(appURL string, enableDebugOutput bool, reportDir, secretsDir str
 		groupBy:           groupBy,
 		filter:            filter,
 		sourceProvider:    sourceProvider,
+		stats:             stats,
 		db:                db,
 		log:               log,
 	}
@@ -195,7 +197,7 @@ func (b *builder) buildReportData() (result *reportData, err error) {
 	var secretCountMsg = fmt.Sprintf("%d secrets", secretCount)
 
 	result = &reportData{
-		ReportDate:        stats.AppStartTime,
+		ReportDate:        time.Now(),
 		AppLink:           linkData{URL: b.appURL, Label: b.appURL},
 		Repos:             repoNames,
 		EnableDebugOutput: b.enableDebugOutput,
@@ -225,6 +227,9 @@ func (b *builder) buildSecretData(secret *database.Secret, secretExtras database
 
 	var secretExtraDatas []*extraData
 	for _, secretExtra := range secretExtras {
+		if !b.enableDebugOutput && secretExtra.Debug {
+			continue
+		}
 		secretExtraDatas = append(secretExtraDatas, b.buildSecretExtraData(secretExtra))
 	}
 
@@ -285,15 +290,19 @@ func (b *builder) buildFindingData(finding *database.Finding, findingExtras data
 
 	var findingExtraDatas []*extraData
 	for _, findingExtra := range findingExtras {
+		if !b.enableDebugOutput && findingExtra.Debug {
+			continue
+		}
 		findingExtraData := b.buildFindingExtraData(findingExtra)
 		findingExtraDatas = append(findingExtraDatas, findingExtraData)
 	}
 	if b.enableDebugOutput {
 		findingExtraDatas = append(findingExtraDatas, &extraData{
-			Key:    "config",
+			Key:    "dev-filter",
 			Header: "Dev filter",
 			Value:  b.buildDevConfig(repo, commit, finding),
 			Code:   true,
+			Debug:  true,
 		})
 	}
 
@@ -370,6 +379,7 @@ func (b *builder) buildFindingExtraData(extra *database.FindingExtra) *extraData
 		Value:  extra.Value,
 		Code:   extra.Code,
 		Link:   link,
+		Debug:  extra.Debug,
 	}
 }
 
@@ -385,6 +395,7 @@ func (b *builder) buildSecretExtraData(extra *database.SecretExtra) *extraData {
 		Value:  extra.Value,
 		Code:   extra.Code,
 		Link:   link,
+		Debug:  extra.Debug,
 	}
 }
 

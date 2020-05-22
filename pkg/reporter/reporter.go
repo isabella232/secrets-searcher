@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-
 	"github.com/pantheon-systems/search-secrets/pkg/stats"
+
+	"github.com/pantheon-systems/search-secrets/pkg/manip"
 
 	"github.com/otiai10/copy"
 	"github.com/pantheon-systems/search-secrets/pkg/database"
@@ -54,14 +54,13 @@ type (
 	SecretFilter  func(secretData *SecretData) (result bool)
 )
 
-func New(reportDir, reportArchivesDir, appURL string, enableDebugOutput, enablePreReports bool, preReportInterval time.Duration, secretIDFilter *manip.SliceFilter, metadataProvider source.ProviderI, db *database.Database, log logg.Logg) *Reporter {
-
+func New(reportDir, reportArchivesDir, appURL string, enableDebugOutput, enablePreReports bool, preReportInterval time.Duration, secretIDFilter *manip.SliceFilter, metadataProvider source.ProviderI, stats *stats.Stats, db *database.Database, log logg.Logg) *Reporter {
 	secretsDir := filepath.Join(reportDir, "secrets")
 	reportFilePath := filepath.Join(reportDir, "report.html")
 
 	builderGroupBy := defaultGroupBy
 	builderFilter := defaultFilter(secretIDFilter)
-	builder := newBuilder(appURL, enableDebugOutput, reportDir, secretsDir, builderGroupBy, builderFilter, metadataProvider, db, log)
+	builder := newBuilder(appURL, enableDebugOutput, reportDir, secretsDir, builderGroupBy, builderFilter, metadataProvider, stats, db, log)
 
 	return &Reporter{
 		ReportDir:         reportDir,
@@ -167,7 +166,8 @@ func (r *Reporter) PrepareReport(createFile, createSecretFiles, createArchive bo
 
 	// Copy report directory archive
 	if createArchive {
-		nowString := stats.AppStartTime.Format("2006-01-02_15-04-05")
+		now := time.Now()
+		nowString := now.Format("2006-01-02_15-04-05")
 		archiveDirname := fmt.Sprintf("report-%s", nowString)
 		archiveDir := filepath.Join(r.ReportArchivesDir, archiveDirname)
 		r.log.Debugf("copying %s to %s ...", r.ReportDir, archiveDir)
@@ -177,6 +177,10 @@ func (r *Reporter) PrepareReport(createFile, createSecretFiles, createArchive bo
 	}
 
 	return
+}
+
+func (r *Reporter) Filter(fnc SecretFilter) {
+	r.builder.filter = fnc
 }
 
 func (r *Reporter) GroupBy(fnc SecretGrouper) {

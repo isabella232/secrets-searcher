@@ -40,7 +40,7 @@ func newCloneWorker(repoInfo *RepoInfo, cloneDir string, skipFetch bool, git *gi
 
 func (w *cloneWorker) Perform() {
 	if err := w.prepareRepo(); err != nil {
-		errors.ErrLog(w.log, err).Error("unable to prepare repo, skipping", w.repoInfo.Name)
+		errors.ErrLog(w.log, err).Errorf("unable to prepare repo %s, skipping", w.repoInfo.Name)
 	}
 }
 
@@ -50,7 +50,21 @@ func (w *cloneWorker) prepareRepo() (err error) {
 		bar = w.prog.AddSpinner(w.repoInfo.Name)
 	}
 
-	defer func() { w.finish(bar, err) }()
+	defer func() {
+		if gitpkg.IsErrEmptyRemoteRepository(err) {
+			err = nil
+			w.log.Warn("repo empty, skipping search")
+			w.finishBar(bar, "- %s repo empty, skipping search")
+			return
+		}
+
+		if err != nil {
+			w.finishBar(bar, "- %s repo prep error, skipping search: "+err.Error())
+			return
+		}
+
+		w.finishBar(bar, "- %s repo prepared for search")
+	}()
 
 	// Remove the clone if it is corrupt
 	if err = w.removeExistingCorruptClone(); err != nil {
@@ -149,21 +163,6 @@ func (w *cloneWorker) fetchRepo() (err error) {
 	}
 
 	return
-}
-
-func (w *cloneWorker) finish(bar *progress.Spinner, err error) {
-	if gitpkg.IsErrEmptyRemoteRepository(err) {
-		w.finishBar(bar, "- %s repo empty, skipping search")
-		return
-	}
-
-	if err != nil {
-		errors.ErrLog(w.log, err).Error(err.Error())
-		w.finishBar(bar, "- %s repo prep error, skipping search: "+err.Error())
-		return
-	}
-
-	w.finishBar(bar, "- %s repo prepared for search")
 }
 
 func (w *cloneWorker) finishBar(bar *progress.Spinner, doneMessage string) {

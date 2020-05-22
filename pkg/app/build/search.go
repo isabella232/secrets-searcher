@@ -3,6 +3,8 @@ package build
 import (
 	"regexp"
 
+	"github.com/pantheon-systems/search-secrets/pkg/stats"
+
 	"github.com/pantheon-systems/search-secrets/pkg/builtin"
 
 	"github.com/pantheon-systems/search-secrets/pkg/app/config"
@@ -18,17 +20,7 @@ import (
 
 var SecretFileMatch = regexp.MustCompile(`^secret-([0-9a-f]{5,40}).yaml$`)
 
-func Search(
-	searchCfg *config.SearchConfig,
-	repoFilter *manip.SliceFilter,
-	sourceDir string,
-	commitFilter *gitpkg.CommitFilter,
-	fileChangeFilter *gitpkg.FileChangeFilter,
-	git *gitpkg.Git,
-	interact *interactpkg.Interact,
-	db *database.Database,
-	searchLog logg.Logg,
-) (result *searchpkg.Search, err error) {
+func Search(searchCfg *config.SearchConfig, repoFilter *manip.SliceFilter, sourceDir string, commitFilter *gitpkg.CommitFilter, fileChangeFilter *gitpkg.FileChangeFilter, enableProfiling bool, git *gitpkg.Git, interact *interactpkg.Interact, stats *stats.Stats, db *database.Database, searchLog logg.Logg) (result *searchpkg.Search, err error) {
 
 	// Build search targets
 	var targets *searchpkg.TargetSet
@@ -60,8 +52,10 @@ func Search(
 		workerCount,
 		chunkSize,
 		showBarPerJob,
+		enableProfiling,
 		git,
 		interact,
+		stats,
 		db,
 		searchJobBuilderLog,
 	)
@@ -79,7 +73,7 @@ func Search(
 	jobRunner := searchpkg.NewJobRunner(workers, dbResultWriter, searchLog)
 
 	// Search service
-	result = searchpkg.New(jobBuilder, jobRunner, interact, db, searchLog)
+	result = searchpkg.New(jobBuilder, jobRunner, interact, stats, db, searchLog)
 
 	return
 }
