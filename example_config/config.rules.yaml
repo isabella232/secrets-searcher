@@ -1,0 +1,59 @@
+---
+
+search:
+  whitelist-path-match:
+
+    # Tests (TODO make this a core rule)
+    - '_[Tt]ests?\..{3,4}$'
+    - '\b[Tt]ests?/'
+    - '\b[Ff]ixtures/'
+    - '\b__tests__/'
+    - '\btests?'
+    - '\btest_?data/'
+    - '\bspec/'
+    - '\bspec\.'
+    - '\.test\.'
+    - '-test\.'
+    - '_test\.'
+    - 'testapp\.'
+    - 'test_?fixtures'
+    - '^spec/'
+
+    # Generated files (TODO make this a core rule)
+    - '\.(?:lock|bundle\.js|min\.js|slim\.js|css\.map|js\.map|DS_Store)$'
+    - 'dist/'
+    - '\bgo\.sum$'
+    - '-lock\.js$'
+    - '-lock\.json$'
+
+    # Presentation files (TODO make this a core rule)
+    - '\.(?:css|css\.map|sass|less|svgp?|gif|woff2?|mp3)$'
+
+    # Package manager files (TODO make this a core rule)
+    - '\bpython[^/]{1,5}/site-packages/'
+    - '\bvendor/'
+    - '\bnode_modules/'
+    - '\bgo\.(?:sum|mod)$'
+    - '\bGemfile$'
+    - 'Pipfile$'
+    - '\brequirements.txt$'
+
+    # Public secret passwords (TODO make this a core rule)
+    - '(SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED)' # Facebook React password
+
+    # Pantheon exludes
+    - '^devops/k8s/secrets/non-prod/'
+
+  whitelist-secret-ids:
+
+    # False positives
+    # Many of these secrets can be more tersely ignored using custom
+    # regex rules, at which time they will be removed
+    # from here. The remaining will be documented.
+    # REMARK: these are sha1 outputs from input strings like:
+    # <repo-url>-<other-value1>-<other-value2>-...
+    # see ./doc/sha-value-example.png for example
+    # sha value
+  # - deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+  # - 1337733113377331133773311337733113377331
+  
