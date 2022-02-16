@@ -2,6 +2,8 @@
 
 Search for sensitive information stored in one or more git repositories.
 
+This repository was inspired by [truffleHog](https://github.com/trufflesecurity/truffleHog) and [shhgit](https://github.com/eth0izzle/shhgit).
+
 ## Build
 
 ```shell script
