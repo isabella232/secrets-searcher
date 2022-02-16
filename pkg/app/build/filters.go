@@ -4,11 +4,11 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 )
 
 func RepoFilter(sourceCfg *config.SourceConfig, rescanPrevious bool, db *database.Database) (result *manip.SliceFilter) {

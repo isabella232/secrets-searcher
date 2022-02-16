@@ -1,0 +1,26 @@
+---
+
+output-dir: ./output
+log-level: info
+
+source:
+  provider: github
+  organization: pantheon-systems
+
+  skip-forks: true
+
+  include-repos:
+    - site-audit-tool
+
+  exclude-repos:
+    - autotag
+    - truffleHog
+    - WordPress
+    - wordpress-network
+    - wordpress-composer
+
+    # # Forks
+    # - WordPress
+
+search:
+  show-bar-per-job: true

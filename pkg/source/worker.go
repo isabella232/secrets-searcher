@@ -5,11 +5,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	"github.com/pantheon-systems/search-secrets/pkg/interact/progress"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	"github.com/pantheon-systems/secrets-searcher/pkg/interact/progress"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
 )

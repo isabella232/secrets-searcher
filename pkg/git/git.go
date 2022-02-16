@@ -1,8 +1,8 @@
 package git
 
 import (
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 	gitvendor "gopkg.in/src-d/go-git.v4"
 	gittransport "gopkg.in/src-d/go-git.v4/plumbing/transport"
 )

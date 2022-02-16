@@ -12,15 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pantheon-systems/search-secrets/pkg/stats"
+	"github.com/pantheon-systems/secrets-searcher/pkg/stats"
 
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 
 	"github.com/otiai10/copy"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/source"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/source"
 	"gopkg.in/yaml.v2"
 )
 

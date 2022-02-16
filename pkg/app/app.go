@@ -6,15 +6,15 @@ import (
 
 	va "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/hako/durafmt"
-	"github.com/pantheon-systems/search-secrets/pkg/app/build"
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	reporterpkg "github.com/pantheon-systems/search-secrets/pkg/reporter"
-	searchpkg "github.com/pantheon-systems/search-secrets/pkg/search"
-	sourcepkg "github.com/pantheon-systems/search-secrets/pkg/source"
-	"github.com/pantheon-systems/search-secrets/pkg/stats"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/build"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	reporterpkg "github.com/pantheon-systems/secrets-searcher/pkg/reporter"
+	searchpkg "github.com/pantheon-systems/secrets-searcher/pkg/search"
+	sourcepkg "github.com/pantheon-systems/secrets-searcher/pkg/source"
+	"github.com/pantheon-systems/secrets-searcher/pkg/stats"
 )
 
 type App struct {

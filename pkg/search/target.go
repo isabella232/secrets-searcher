@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"sort"
 
-	entropypkg "github.com/pantheon-systems/search-secrets/pkg/entropy"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/search/rulebuild"
+	entropypkg "github.com/pantheon-systems/secrets-searcher/pkg/entropy"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/rulebuild"
 )
 
 var (

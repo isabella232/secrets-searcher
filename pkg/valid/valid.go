@@ -10,7 +10,7 @@ import (
 	"time"
 
 	va "github.com/go-ozzo/ozzo-validation/v4"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 
 	"os"
 

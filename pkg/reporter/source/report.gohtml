@@ -1,4 +1,4 @@
-{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}
+{{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.reportData*/ -}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -89,7 +89,7 @@
 </html>
 
 {{define "secret-rows"}}
-    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.secretData*/ -}}
+    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.secretData*/ -}}
     <div class="secret expander row">
         <div class="col col-5 label">
             <a href="javascript:" class="float-left expander-link material-icons"></a>
@@ -163,12 +163,12 @@
 {{end}}
 
 {{define "link"}}
-    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.linkData*/ -}}
+    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.linkData*/ -}}
     <a href="{{.URL}}" title="{{.Tooltip}}" data-toggle="tooltip" data-placement="top">{{.Label}}</a>
 {{end}}
 
 {{define "extra-row"}}
-    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}
+    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.extraData*/ -}}
     <div class="row{{if .Debug}} debug{{end}}">
         <div class="col col-2 label">{{.Header}}</div>
         <div class="col col-10">{{template "extra" .}}</div>
@@ -176,7 +176,7 @@
 {{end}}
 
 {{define "extra"}}
-    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}
+    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.extraData*/ -}}
     {{if .Link}}
         {{template "link" .Link}}
     {{else if .Code}}

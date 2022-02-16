@@ -3,19 +3,19 @@ package build
 import (
 	"path/filepath"
 
-	statspkg "github.com/pantheon-systems/search-secrets/pkg/stats"
+	statspkg "github.com/pantheon-systems/secrets-searcher/pkg/stats"
 
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/app/vars"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	reporterpkg "github.com/pantheon-systems/search-secrets/pkg/reporter"
-	searchpkg "github.com/pantheon-systems/search-secrets/pkg/search"
-	sourcepkg "github.com/pantheon-systems/search-secrets/pkg/source"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/vars"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	interactpkg "github.com/pantheon-systems/secrets-searcher/pkg/interact"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	reporterpkg "github.com/pantheon-systems/secrets-searcher/pkg/reporter"
+	searchpkg "github.com/pantheon-systems/secrets-searcher/pkg/search"
+	sourcepkg "github.com/pantheon-systems/secrets-searcher/pkg/source"
 )
 
 type AppParams struct {

@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/google/go-github/v29/github"
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/source"
-	providerpkg "github.com/pantheon-systems/search-secrets/pkg/source/providers"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	interactpkg "github.com/pantheon-systems/secrets-searcher/pkg/interact"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/source"
+	providerpkg "github.com/pantheon-systems/secrets-searcher/pkg/source/providers"
 	"golang.org/x/oauth2"
 )
 

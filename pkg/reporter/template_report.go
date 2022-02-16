@@ -9,7 +9,7 @@ package reporter
 // template_reportTemplate is a generated function returning the template as a string.
 // That string should be parsed by the functions of the golang's template package.
 func template_reportTemplate() string {
-	var tmpl = "{{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.reportData*/ -}}\n" +
+	var tmpl = "{{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.reportData*/ -}}\n" +
 		"<!DOCTYPE html>\n" +
 		"<html lang=\"en\">\n" +
 		"<head>\n" +
@@ -100,7 +100,7 @@ func template_reportTemplate() string {
 		"</html>\n" +
 		"\n" +
 		"{{define \"secret-rows\"}}\n" +
-		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.secretData*/ -}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.secretData*/ -}}\n" +
 		"    <div class=\"secret expander row\">\n" +
 		"        <div class=\"col col-5 label\">\n" +
 		"            <a href=\"javascript:\" class=\"float-left expander-link material-icons\"></a>\n" +
@@ -174,12 +174,12 @@ func template_reportTemplate() string {
 		"{{end}}\n" +
 		"\n" +
 		"{{define \"link\"}}\n" +
-		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.linkData*/ -}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.linkData*/ -}}\n" +
 		"    <a href=\"{{.URL}}\" title=\"{{.Tooltip}}\" data-toggle=\"tooltip\" data-placement=\"top\">{{.Label}}</a>\n" +
 		"{{end}}\n" +
 		"\n" +
 		"{{define \"extra-row\"}}\n" +
-		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.extraData*/ -}}\n" +
 		"    <div class=\"row{{if .Debug}} debug{{end}}\">\n" +
 		"        <div class=\"col col-2 label\">{{.Header}}</div>\n" +
 		"        <div class=\"col col-10\">{{template \"extra\" .}}</div>\n" +
@@ -187,7 +187,7 @@ func template_reportTemplate() string {
 		"{{end}}\n" +
 		"\n" +
 		"{{define \"extra\"}}\n" +
-		"    {{- /*gotype: github.com/pantheon-systems/search-secrets/pkg/reporter.extraData*/ -}}\n" +
+		"    {{- /*gotype: github.com/pantheon-systems/secrets-searcher/pkg/reporter.extraData*/ -}}\n" +
 		"    {{if .Link}}\n" +
 		"        {{template \"link\" .Link}}\n" +
 		"    {{else if .Code}}\n" +

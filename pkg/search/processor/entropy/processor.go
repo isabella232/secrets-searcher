@@ -5,14 +5,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/search"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search"
 
-	entropypkg "github.com/pantheon-systems/search-secrets/pkg/entropy"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/git"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/search/contract"
+	entropypkg "github.com/pantheon-systems/secrets-searcher/pkg/entropy"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/git"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/contract"
 )
 
 var (

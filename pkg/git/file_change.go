@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
 	gitdiff "gopkg.in/src-d/go-git.v4/plumbing/format/diff"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"
 )

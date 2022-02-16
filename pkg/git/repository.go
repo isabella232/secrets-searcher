@@ -6,8 +6,8 @@ import (
 
 	"gopkg.in/src-d/go-git.v4/config"
 
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 	gitvendor "gopkg.in/src-d/go-git.v4"
 	gitplumbing "gopkg.in/src-d/go-git.v4/plumbing"
 	gitobject "gopkg.in/src-d/go-git.v4/plumbing/object"

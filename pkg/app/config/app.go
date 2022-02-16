@@ -3,11 +3,11 @@ package config
 import (
 	"context"
 
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 
 	va "github.com/go-ozzo/ozzo-validation/v4"
-	"github.com/pantheon-systems/search-secrets/pkg/app/vars"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/vars"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 )
 
 const (

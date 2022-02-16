@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/google/go-github/v29/github"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/source"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/source"
 )
 
 const perPage = 100

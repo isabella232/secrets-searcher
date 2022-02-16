@@ -3,9 +3,9 @@ package vars
 const (
 
 	// ID
-	Name        = "search-secrets"
+	Name        = "secrets-searcher"
 	Description = "Search for sensitive information stored in Pantheon git repositories."
-	URL         = "https://github.com/pantheon-systems/search-secrets"
+	URL         = "https://github.com/pantheon-systems/secrets-searcher"
 
 	// Config
 

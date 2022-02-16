@@ -3,7 +3,7 @@ package git
 import (
 	"time"
 
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 )
 
 type CommitFilter struct {

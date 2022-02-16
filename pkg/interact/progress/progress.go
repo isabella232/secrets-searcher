@@ -1,7 +1,7 @@
 package progress
 
 import (
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 	"github.com/vbauerster/mpb/v5"
 )
 
