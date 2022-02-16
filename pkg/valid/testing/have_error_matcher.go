@@ -6,8 +6,8 @@ import (
 
 	va "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/onsi/gomega/types"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 )
 
 func HaveError(param *manip.Param) types.GomegaMatcher {

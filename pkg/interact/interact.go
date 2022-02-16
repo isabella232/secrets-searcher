@@ -1,8 +1,8 @@
 package interact
 
 import (
-	"github.com/pantheon-systems/search-secrets/pkg/interact/progress"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/interact/progress"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 )
 
 type Interact struct {

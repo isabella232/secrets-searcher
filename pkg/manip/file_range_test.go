@@ -3,7 +3,7 @@ package manip_test
 import (
 	"testing"
 
-	. "github.com/pantheon-systems/search-secrets/pkg/manip"
+	. "github.com/pantheon-systems/secrets-searcher/pkg/manip"
 	"github.com/stretchr/testify/require"
 )
 

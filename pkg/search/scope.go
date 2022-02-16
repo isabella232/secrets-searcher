@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	"github.com/pantheon-systems/search-secrets/pkg/search/contract"
-	"github.com/pantheon-systems/search-secrets/pkg/stats"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/contract"
+	"github.com/pantheon-systems/secrets-searcher/pkg/stats"
 )
 
 type (

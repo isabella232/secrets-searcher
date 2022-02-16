@@ -2,8 +2,8 @@ package config
 
 import (
 	va "github.com/go-ozzo/ozzo-validation/v4"
-	"github.com/pantheon-systems/search-secrets/pkg/search/rulebuild"
-	"github.com/pantheon-systems/search-secrets/pkg/valid"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/rulebuild"
+	"github.com/pantheon-systems/secrets-searcher/pkg/valid"
 )
 
 type SetterProcessorConfig struct {

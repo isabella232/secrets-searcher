@@ -1,7 +1,7 @@
 package main
 
 import (
-    "github.com/pantheon-systems/search-secrets/cmd"
+    "github.com/pantheon-systems/secrets-searcher/cmd"
 )
 
 func main() {

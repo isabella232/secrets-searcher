@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
 
 	"github.com/sirupsen/logrus"
 

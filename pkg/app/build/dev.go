@@ -1,8 +1,8 @@
 package build
 
 import (
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
 )
 
 func Dev(devCfg *config.DevConfig) *dev.Parameters {

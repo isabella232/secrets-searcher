@@ -1,13 +1,15 @@
-# search-secrets
+# secrets-searcher
 
 Search for sensitive information stored in one or more git repositories.
+
+This repository was inspired by [truffleHog](https://github.com/trufflesecurity/truffleHog) and [shhgit](https://github.com/eth0izzle/shhgit).
 
 ## Build
 
 ```shell script
 cd ~/go/src/github.com/pantheon-systems
-git clone git@github.com:pantheon-systems/search-secrets.git
-cd search-secrets
+git clone git@github.com:pantheon-systems/secrets-searcher.git
+cd secrets-searcher
 make
 ```
 
@@ -21,7 +23,7 @@ Then run:
 ```shell script
 cd _pantheon
 export SECRETS_SOURCE_API_TOKEN="[GITHUB_TOKEN]"
-../search-secrets --config="config.yaml,config.rules.yaml"
+../secrets-searcher --config="config.yaml,config.rules.yaml"
 ```
 
 The tool will create an `./output/report` directory that includes an HTML report.

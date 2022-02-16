@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
 )
 
 var (

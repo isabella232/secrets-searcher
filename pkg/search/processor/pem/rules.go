@@ -4,12 +4,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/git"
+	"github.com/pantheon-systems/secrets-searcher/pkg/git"
 
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/search/contract"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/contract"
 )
 
 var onlyBase64Re = regexp.MustCompile(`^[a-zA-Z0-9+/]+={0,2}$`)

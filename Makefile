@@ -1,4 +1,4 @@
-APP=search-secrets
+APP=secrets-searcher
 
 GOCMD=go
 GOIMPORTS=goimports

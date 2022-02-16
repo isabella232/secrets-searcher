@@ -8,9 +8,9 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/search"
-	"github.com/pantheon-systems/search-secrets/pkg/search/rulebuild"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/rulebuild"
 )
 
 const (

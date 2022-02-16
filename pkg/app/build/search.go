@@ -3,19 +3,19 @@ package build
 import (
 	"regexp"
 
-	"github.com/pantheon-systems/search-secrets/pkg/stats"
+	"github.com/pantheon-systems/secrets-searcher/pkg/stats"
 
-	"github.com/pantheon-systems/search-secrets/pkg/builtin"
+	"github.com/pantheon-systems/secrets-searcher/pkg/builtin"
 
-	"github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/database"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	gitpkg "github.com/pantheon-systems/search-secrets/pkg/git"
-	interactpkg "github.com/pantheon-systems/search-secrets/pkg/interact"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	searchpkg "github.com/pantheon-systems/search-secrets/pkg/search"
-	"github.com/pantheon-systems/search-secrets/pkg/search/contract"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/database"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	gitpkg "github.com/pantheon-systems/secrets-searcher/pkg/git"
+	interactpkg "github.com/pantheon-systems/secrets-searcher/pkg/interact"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	searchpkg "github.com/pantheon-systems/secrets-searcher/pkg/search"
+	"github.com/pantheon-systems/secrets-searcher/pkg/search/contract"
 )
 
 var SecretFileMatch = regexp.MustCompile(`^secret-([0-9a-f]{5,40}).yaml$`)

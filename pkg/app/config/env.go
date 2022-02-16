@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
 
-	"github.com/pantheon-systems/search-secrets/pkg/app/vars"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/vars"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
 )
 
 func ParseEnvVars(appCfg *AppConfig, envVars []string) (err error) {

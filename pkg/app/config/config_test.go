@@ -7,19 +7,19 @@ import (
 	"path/filepath"
 	"testing"
 
-	searchpkg "github.com/pantheon-systems/search-secrets/pkg/search"
-	"github.com/pantheon-systems/search-secrets/pkg/source"
+	searchpkg "github.com/pantheon-systems/secrets-searcher/pkg/search"
+	"github.com/pantheon-systems/secrets-searcher/pkg/source"
 
 	va "github.com/go-ozzo/ozzo-validation/v4"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	. "github.com/pantheon-systems/search-secrets/pkg/app/config"
-	"github.com/pantheon-systems/search-secrets/pkg/dev"
-	"github.com/pantheon-systems/search-secrets/pkg/logg"
-	"github.com/pantheon-systems/search-secrets/pkg/valid"
-	. "github.com/pantheon-systems/search-secrets/pkg/valid/testing"
+	. "github.com/pantheon-systems/secrets-searcher/pkg/app/config"
+	"github.com/pantheon-systems/secrets-searcher/pkg/dev"
+	"github.com/pantheon-systems/secrets-searcher/pkg/logg"
+	"github.com/pantheon-systems/secrets-searcher/pkg/valid"
+	. "github.com/pantheon-systems/secrets-searcher/pkg/valid/testing"
 )
 
 func TestConfig(t *testing.T) {

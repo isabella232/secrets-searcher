@@ -9,10 +9,10 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/mitchellh/mapstructure"
-	"github.com/pantheon-systems/search-secrets/pkg/app/vars"
-	"github.com/pantheon-systems/search-secrets/pkg/errors"
-	"github.com/pantheon-systems/search-secrets/pkg/manip"
-	"github.com/pantheon-systems/search-secrets/pkg/valid"
+	"github.com/pantheon-systems/secrets-searcher/pkg/app/vars"
+	"github.com/pantheon-systems/secrets-searcher/pkg/errors"
+	"github.com/pantheon-systems/secrets-searcher/pkg/manip"
+	"github.com/pantheon-systems/secrets-searcher/pkg/valid"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
